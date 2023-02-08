@@ -61,6 +61,8 @@ find_package(catkin REQUIRED COMPONENTS
   image_transport
 )
 
+set(Sophus /home/uisee/Environment/Sophus_a621ff/installation)
+
 find_package(Eigen3 REQUIRED)
 find_package(PCL REQUIRED)
 FIND_PACKAGE(OpenCV REQUIRED)
