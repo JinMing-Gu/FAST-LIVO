@@ -44,8 +44,8 @@ namespace lidar_selection
         int id_;                   //!< Unique id of the frame.
         // double                        timestamp_;             //!< Timestamp of when the image was recorded.
         vk::AbstractCamera *cam_;    //!< Camera model.
-        SE3 T_f_w_;                  //!< Transform (f)rame from (w)orld.
-        Matrix<double, 6, 6> Cov_;   //!< Covariance.
+        Sophus::SE3 T_f_w_;                  //!< Transform (f)rame from (w)orld.
+        Eigen::Matrix<double, 6, 6> Cov_;   //!< Covariance.
         ImgPyr img_pyr_;             //!< Image Pyramid.
         Features fts_;               //!< List of features in the image.
         vector<FeaturePtr> key_pts_; //!< Five features and associated 3D points which are used to detect if two frames have overlapping field of view.
@@ -78,7 +78,7 @@ namespace lidar_selection
         inline size_t nObs() const { return fts_.size(); }
 
         /// Check if a point in (w)orld coordinate frame is visible in the image.
-        bool isVisible(const Vector3d &xyz_w) const;
+        bool isVisible(const Eigen::Vector3d &xyz_w) const;
 
         /// Full resolution image stored in the frame.
         inline const cv::Mat &img() const { return img_pyr_[0]; }
@@ -87,38 +87,38 @@ namespace lidar_selection
         inline bool isKeyframe() const { return is_keyframe_; }
 
         /// Transforms point coordinates in world-frame (w) to camera pixel coordinates (c).
-        inline Vector2d w2c(const Vector3d &xyz_w) const { return cam_->world2cam(T_f_w_ * xyz_w); }
+        inline Eigen::Vector2d w2c(const Eigen::Vector3d &xyz_w) const { return cam_->world2cam(T_f_w_ * xyz_w); }
 
         /// Transforms pixel coordinates (c) to frame unit sphere coordinates (f).
-        inline Vector3d c2f(const Vector2d &px) const { return cam_->cam2world(px[0], px[1]); }
+        inline Eigen::Vector3d c2f(const Eigen::Vector2d &px) const { return cam_->cam2world(px[0], px[1]); }
 
         /// Transforms pixel coordinates (c) to frame unit sphere coordinates (f).
-        inline Vector3d c2f(const double x, const double y) const { return cam_->cam2world(x, y); }
+        inline Eigen::Vector3d c2f(const double x, const double y) const { return cam_->cam2world(x, y); }
 
         /// Transforms point coordinates in world-frame (w) to camera-frams (f).
-        inline Vector3d w2f(const Vector3d &xyz_w) const { return T_f_w_ * xyz_w; }
+        inline Eigen::Vector3d w2f(const Eigen::Vector3d &xyz_w) const { return T_f_w_ * xyz_w; }
 
         /// Transforms point from frame unit sphere (f) frame to world coordinate frame (w).
-        inline Vector3d f2w(const Vector3d &f) const { return T_f_w_.inverse() * f; }
+        inline Eigen::Vector3d f2w(const Eigen::Vector3d &f) const { return T_f_w_.inverse() * f; }
 
         /// Projects Point from unit sphere (f) in camera pixels (c).
-        inline Vector2d f2c(const Vector3d &f) const { return cam_->world2cam(f); }
+        inline Eigen::Vector2d f2c(const Eigen::Vector3d &f) const { return cam_->world2cam(f); }
 
         /// Return the pose of the frame in the (w)orld coordinate frame.
-        inline Vector3d pos() const { return T_f_w_.inverse().translation(); }
+        inline Eigen::Vector3d pos() const { return T_f_w_.inverse().translation(); }
 
         /// Frame jacobian for projection of 3D point in (f)rame coordinate to
         /// unit plane coordinates uv (focal length = 1).
         inline static void jacobian_xyz2uv_change(
-            const Vector3d &xyz_in_world,
-            const Vector3d &xyz_in_f,
-            Matrix<double, 2, 6> &J,
-            SE3 &Tbc,
-            SE3 &T_ref_w,
+            const Eigen::Vector3d &xyz_in_world,
+            const Eigen::Vector3d &xyz_in_f,
+            Eigen::Matrix<double, 2, 6> &J,
+            Sophus::SE3 &Tbc,
+            Sophus::SE3 &T_ref_w,
             double fx)
         {
-            // Vector3d xyz_in_imu = Tbc * xyz_in_world;
-            // Vector3d xyz_in_imu = xyz_in_world;
+            // Eigen::Vector3d xyz_in_imu = Tbc * xyz_in_world;
+            // Eigen::Vector3d xyz_in_imu = xyz_in_world;
             const double x = xyz_in_f[0];
             const double y = xyz_in_f[1];
             // const double z = xyz_in_f[2];
@@ -130,8 +130,8 @@ namespace lidar_selection
             const double y_in_world = xyz_in_world[1];
             const double z_in_world = xyz_in_world[2];
 
-            Matrix<double, 2, 3> J1;
-            Matrix<double, 3, 6> J2;
+            Eigen::Matrix<double, 2, 3> J1;
+            Eigen::Matrix<double, 3, 6> J2;
 
             J1(0, 0) = -fx * z_inv;
             J1(0, 1) = 0.0;
@@ -166,8 +166,8 @@ namespace lidar_selection
         }
 
         inline static void jacobian_xyz2uv(
-            const Vector3d &xyz_in_f,
-            Matrix<double, 2, 6> &J)
+            const Eigen::Vector3d &xyz_in_f,
+            Eigen::Matrix<double, 2, 6> &J)
         {
             const double x = xyz_in_f[0];
             const double y = xyz_in_f[1];

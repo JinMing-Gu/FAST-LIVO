@@ -27,10 +27,6 @@
 #include <fast_livo/States.h>
 #include <geometry_msgs/Vector3.h>
 
-#ifdef USE_IKFOM
-#include "use-ikfom.hpp"
-#endif
-
 /// *************Preconfiguration
 
 #define MAX_INI_COUNT (200)
@@ -49,55 +45,45 @@ public:
     void Reset();
     void Reset(double start_timestamp, const sensor_msgs::ImuConstPtr &lastimu);
     void push_update_state(double offs_t, StatesGroup state);
-    void set_extrinsic(const V3D &transl, const M3D &rot);
-    void set_extrinsic(const V3D &transl);
+    void set_extrinsic(const Eigen::Vector3d &transl, const Eigen::Matrix3d &rot);
+    void set_extrinsic(const Eigen::Vector3d &transl);
     void set_extrinsic(const MD(4, 4) & T);
-    void set_gyr_cov_scale(const V3D &scaler);
-    void set_acc_cov_scale(const V3D &scaler);
-    void set_gyr_bias_cov(const V3D &b_g);
-    void set_acc_bias_cov(const V3D &b_a);
-#ifdef USE_IKFOM
-    Eigen::Matrix<double, 12, 12> Q;
-    void Process(const MeasureGroup &meas, esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state, PointCloudXYZI::Ptr pcl_un_);
-#else
+    void set_gyr_cov_scale(const Eigen::Vector3d &scaler);
+    void set_acc_cov_scale(const Eigen::Vector3d &scaler);
+    void set_gyr_bias_cov(const Eigen::Vector3d &b_g);
+    void set_acc_bias_cov(const Eigen::Vector3d &b_a);
     void Process(const LidarMeasureGroup &lidar_meas, StatesGroup &stat, PointCloudXYZI::Ptr cur_pcl_un_);
     void Process2(LidarMeasureGroup &lidar_meas, StatesGroup &stat, PointCloudXYZI::Ptr cur_pcl_un_);
     void UndistortPcl(LidarMeasureGroup &lidar_meas, StatesGroup &state_inout, PointCloudXYZI &pcl_out);
-#endif
 
     ros::NodeHandle nh;
     ofstream fout_imu;
-    V3D cov_acc;
-    V3D cov_gyr;
-    V3D cov_acc_scale;
-    V3D cov_gyr_scale;
-    V3D cov_bias_gyr;
-    V3D cov_bias_acc;
+    Eigen::Vector3d cov_acc;
+    Eigen::Vector3d cov_gyr;
+    Eigen::Vector3d cov_acc_scale;
+    Eigen::Vector3d cov_gyr_scale;
+    Eigen::Vector3d cov_bias_gyr;
+    Eigen::Vector3d cov_bias_acc;
     double first_lidar_time;
 
 private:
-#ifdef USE_IKFOM
-    void IMU_init(const MeasureGroup &meas, esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state, int &N);
-    void UndistortPcl(const MeasureGroup &meas, esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state, PointCloudXYZI &pcl_in_out);
-#else
     void IMU_init(const MeasureGroup &meas, StatesGroup &state, int &N);
     void Forward(const MeasureGroup &meas, StatesGroup &state_inout, double pcl_beg_time, double end_time);
     void Backward(const LidarMeasureGroup &lidar_meas, StatesGroup &state_inout, PointCloudXYZI &pcl_out);
-#endif
 
     PointCloudXYZI::Ptr cur_pcl_un_;
     sensor_msgs::ImuConstPtr last_imu_;
     deque<sensor_msgs::ImuConstPtr> v_imu_;
     vector<Pose6D> IMUpose;
-    vector<M3D> v_rot_pcl_;
-    M3D Lid_rot_to_IMU;
-    V3D Lid_offset_to_IMU;
-    V3D mean_acc;
-    V3D mean_gyr;
-    V3D angvel_last;
-    V3D acc_s_last;
-    V3D last_acc;
-    V3D last_ang;
+    vector<Eigen::Matrix3d> v_rot_pcl_;
+    Eigen::Matrix3d Lid_rot_to_IMU;
+    Eigen::Vector3d Lid_offset_to_IMU;
+    Eigen::Vector3d mean_acc;
+    Eigen::Vector3d mean_gyr;
+    Eigen::Vector3d angvel_last;
+    Eigen::Vector3d acc_s_last;
+    Eigen::Vector3d last_acc;
+    Eigen::Vector3d last_ang;
     double start_timestamp_;
     double last_lidar_end_time_;
     int init_iter_num = 1;

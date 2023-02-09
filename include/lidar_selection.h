@@ -26,8 +26,8 @@ namespace lidar_selection
         SparseMap *sparse_map;
         StatesGroup *state;
         StatesGroup *state_propagat;
-        M3D Rli, Rci, Rcw, Jdphi_dR, Jdp_dt, Jdp_dR;
-        V3D Pli, Pci, Pcw;
+        Eigen::Matrix3d Rli, Rci, Rcw, Jdphi_dR, Jdp_dt, Jdp_dR;
+        Eigen::Vector3d Pli, Pci, Pcw;
         int *align_flag;
         int *grid_num;
         int *map_index;
@@ -53,8 +53,8 @@ namespace lidar_selection
         int frame_cont = 1;
         vk::robust_cost::ScaleEstimatorPtr scale_estimator_;
 
-        Matrix<double, DIM_STATE, DIM_STATE> G, H_T_H;
-        MatrixXd H_sub, K;
+        Eigen::Matrix<double, DIM_STATE, DIM_STATE> G, H_T_H;
+        Eigen::MatrixXd H_sub, K;
         cv::flann::Index Kdtree;
 
         LidarSelector(const int grid_size, SparseMap *sparse_map);
@@ -62,15 +62,15 @@ namespace lidar_selection
         ~LidarSelector();
 
         void detect(cv::Mat img, PointCloudXYZI::Ptr pg);
-        float CheckGoodPoints(cv::Mat img, V2D uv);
+        float CheckGoodPoints(cv::Mat img, Eigen::Vector2d uv);
         void addFromSparseMap(cv::Mat img, PointCloudXYZI::Ptr pg);
         void addSparseMap(cv::Mat img, PointCloudXYZI::Ptr pg);
         void FeatureAlignment(cv::Mat img);
-        void set_extrinsic(const V3D &transl, const M3D &rot);
+        void set_extrinsic(const Eigen::Vector3d &transl, const Eigen::Matrix3d &rot);
         void init();
-        void getpatch(cv::Mat img, V3D pg, float *patch_tmp, int level);
-        void getpatch(cv::Mat img, V2D pc, float *patch_tmp, int level);
-        void dpi(V3D p, MD(2, 3) & J);
+        void getpatch(cv::Mat img, Eigen::Vector3d pg, float *patch_tmp, int level);
+        void getpatch(cv::Mat img, Eigen::Vector2d pc, float *patch_tmp, int level);
+        void dpi(Eigen::Vector3d p, MD(2, 3) & J);
         float UpdateState(cv::Mat img, float total_residual, int level);
         double NCC(float *ref_patch, float *cur_patch, int patch_size);
 
@@ -82,31 +82,31 @@ namespace lidar_selection
         void createPatchFromPatchWithBorder(float *patch_with_border, float *patch_ref);
         void getWarpMatrixAffine(
             const vk::AbstractCamera &cam,
-            const Vector2d &px_ref,
-            const Vector3d &f_ref,
+            const Eigen::Vector2d &px_ref,
+            const Eigen::Vector3d &f_ref,
             const double depth_ref,
-            const SE3 &T_cur_ref,
+            const Sophus::SE3 &T_cur_ref,
             const int level_ref, // px_ref对应特征点的金字塔层级
             const int pyramid_level,
             const int halfpatch_size,
-            Matrix2d &A_cur_ref);
+            Eigen::Matrix2d &A_cur_ref);
         bool align2D(
             const cv::Mat &cur_img,
             float *ref_patch_with_border,
             float *ref_patch,
             const int n_iter,
-            Vector2d &cur_px_estimate,
+            Eigen::Vector2d &cur_px_estimate,
             int index);
         void AddPoint(PointPtr pt_new);
-        int getBestSearchLevel(const Matrix2d &A_cur_ref, const int max_level);
+        int getBestSearchLevel(const Eigen::Matrix2d &A_cur_ref, const int max_level);
         void display_keypatch(double time);
         void updateFrameState(StatesGroup state);
-        V3F getpixel(cv::Mat img, V2D pc);
+        Eigen::Vector3f getpixel(cv::Mat img, Eigen::Vector2d pc);
 
         void warpAffine(
-            const Matrix2d &A_cur_ref,
+            const Eigen::Matrix2d &A_cur_ref,
             const cv::Mat &img_ref,
-            const Vector2d &px_ref,
+            const Eigen::Vector2d &px_ref,
             const int level_ref,
             const int search_level,
             const int pyramid_level,
@@ -124,7 +124,7 @@ namespace lidar_selection
         vector<VOXEL_KEY> occupy_postions;
         set<VOXEL_KEY> sub_postion;
         vector<PointPtr> voxel_points_;
-        vector<V3D> add_voxel_points_;
+        vector<Eigen::Vector3d> add_voxel_points_;
 
         cv::Mat img_cp, img_rgb;
         std::vector<FramePtr> overlap_kfs_;
@@ -149,8 +149,8 @@ namespace lidar_selection
         {
             EIGEN_MAKE_ALIGNED_OPERATOR_NEW
             PointPtr pt;
-            Vector2d px;
-            Candidate(PointPtr pt, Vector2d &px) : pt(pt), px(px) {}
+            Eigen::Vector2d px;
+            Candidate(PointPtr pt, Eigen::Vector2d &px) : pt(pt), px(px) {}
         };
         typedef std::list<Candidate> Cell;
         typedef std::vector<Cell *> CandidateGrid;

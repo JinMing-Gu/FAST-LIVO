@@ -115,12 +115,12 @@ namespace lidar_selection
         FramePtr getClosestKeyframe(const FramePtr &frame) const;
 
         /// Return the keyframe which is furthest apart from pos.
-        FramePtr getFurthestKeyframe(const Vector3d &pos) const;
+        FramePtr getFurthestKeyframe(const Eigen::Vector3d &pos) const;
 
         bool getKeyframeById(const int id, FramePtr &frame) const;
 
         /// Transform the whole map with rotation R, translation t and scale s.
-        void transform(const Matrix3d &R, const Vector3d &t, const double &s);
+        void transform(const Eigen::Matrix3d &R, const Eigen::Vector3d &t, const double &s);
 
         /// Empty trash bin of deleted keyframes and map points. We don't delete the
         /// points immediately to ensure proper cleanup and to provide the visualizer

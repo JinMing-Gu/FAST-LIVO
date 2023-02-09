@@ -23,7 +23,7 @@ namespace lidar_selection
 
     int Point::point_counter_ = 0;
 
-    Point::Point(const Vector3d &pos) : id_(point_counter_++),
+    Point::Point(const Eigen::Vector3d &pos) : id_(point_counter_++),
                                         pos_(pos),
                                         normal_set_(false),
                                         n_obs_(0),
@@ -37,7 +37,7 @@ namespace lidar_selection
     {
     }
 
-    Point::Point(const Vector3d &pos, FeaturePtr ftr) : id_(point_counter_++),
+    Point::Point(const Eigen::Vector3d &pos, FeaturePtr ftr) : id_(point_counter_++),
                                                         pos_(pos),
                                                         normal_set_(false),
                                                         n_obs_(1),
@@ -104,7 +104,7 @@ namespace lidar_selection
         const FeaturePtr ftr = obs_.back();
         assert(ftr->frame != nullptr);
         normal_ = ftr->frame->T_f_w_.rotation_matrix().transpose() * (-ftr->f);
-        normal_information_ = DiagonalMatrix<double, 3, 3>(pow(20 / (pos_ - ftr->frame->pos()).norm(), 2), 1.0, 1.0);
+        normal_information_ = Eigen::DiagonalMatrix<double, 3, 3>(pow(20 / (pos_ - ftr->frame->pos()).norm(), 2), 1.0, 1.0);
         normal_set_ = true;
     }
 
@@ -118,7 +118,7 @@ namespace lidar_selection
         double min_cos_angle = 3.14;
         for (auto it = obs_.begin(), ite = obs_.end(); it != ite; ++it)
         {
-            SE3 delta_pose = (*it)->T_f_w_ * new_frame->T_f_w_.inverse(); // dir.normalize();
+            Sophus::SE3 delta_pose = (*it)->T_f_w_ * new_frame->T_f_w_.inverse(); // dir.normalize();
             double delta_theta = (delta_pose.rotation_matrix().trace() > 3.0 - 1e-6) ? 0.0 : std::acos(0.5 * (delta_pose.rotation_matrix().trace() - 1));
             double delta_p = delta_pose.translation().norm();
             double p_in_ref = ((*it)->T_f_w_ * pos_).norm();
@@ -141,20 +141,20 @@ namespace lidar_selection
         return true;
     }
 
-    bool Point::getCloseViewObs(const Vector3d &framepos, FeaturePtr &ftr, const Vector2d &cur_px) const
+    bool Point::getCloseViewObs(const Eigen::Vector3d &framepos, FeaturePtr &ftr, const Eigen::Vector2d &cur_px) const
     {
         // TODO: get frame with same point of view AND same pyramid level!
         if (obs_.size() <= 0)
             return false;
 
-        Vector3d obs_dir(framepos - pos_);
+        Eigen::Vector3d obs_dir(framepos - pos_);
         obs_dir.normalize();
         auto min_it = obs_.begin();
         double min_cos_angle = 0;
 
         for (auto it = obs_.begin(), ite = obs_.end(); it != ite; ++it)
         {
-            Vector3d dir((*it)->T_f_w_.inverse().translation() - pos_);
+            Eigen::Vector3d dir((*it)->T_f_w_.inverse().translation() - pos_);
             dir.normalize();
             double cos_angle = obs_dir.dot(dir);
             if (cos_angle > min_cos_angle)
@@ -165,7 +165,7 @@ namespace lidar_selection
         }
         ftr = *min_it;
 
-        // Vector2d ftr_px = ftr->px;
+        // Eigen::Vector2d ftr_px = ftr->px;
         // double pixel_dist = (cur_px-ftr_px).norm();
 
         // if(pixel_dist > 200)
@@ -183,20 +183,20 @@ namespace lidar_selection
         return true;
     }
 
-    bool Point::getCloseViewObs_test(const Vector3d &framepos, FeaturePtr &ftr, const Vector2d &cur_px, double &min_cos_angle) const
+    bool Point::getCloseViewObs_test(const Eigen::Vector3d &framepos, FeaturePtr &ftr, const Eigen::Vector2d &cur_px, double &min_cos_angle) const
     {
         // TODO: get frame with same point of view AND same pyramid level!
         if (obs_.size() <= 0)
             return false;
 
-        Vector3d obs_dir(framepos - pos_);
+        Eigen::Vector3d obs_dir(framepos - pos_);
         obs_dir.normalize();
         auto min_it = obs_.begin();
         min_cos_angle = 0;
 
         for (auto it = obs_.begin(), ite = obs_.end(); it != ite; ++it)
         {
-            Vector3d dir((*it)->T_f_w_.inverse().translation() - pos_);
+            Eigen::Vector3d dir((*it)->T_f_w_.inverse().translation() - pos_);
             dir.normalize();
             double cos_angle = obs_dir.dot(dir);
             if (cos_angle > min_cos_angle)
@@ -207,7 +207,7 @@ namespace lidar_selection
         }
         ftr = *min_it;
 
-        // Vector2d ftr_px = ftr->px;
+        // Eigen::Vector2d ftr_px = ftr->px;
         // double pixel_dist = (cur_px-ftr_px).norm();
 
         // if(pixel_dist > 200)
@@ -225,14 +225,14 @@ namespace lidar_selection
         return true;
     }
 
-    void Point::getFurthestViewObs(const Vector3d &framepos, FeaturePtr &ftr) const
+    void Point::getFurthestViewObs(const Eigen::Vector3d &framepos, FeaturePtr &ftr) const
     {
-        // Vector3d obs_dir(framepos - pos_); obs_dir.normalize();
+        // Eigen::Vector3d obs_dir(framepos - pos_); obs_dir.normalize();
         // auto max_it=obs_.begin();
         // double max_cos_angle = 1;
         // for(auto it=obs_.begin(), ite=obs_.end(); it!=ite; ++it)
         // {
-        //   Vector3d dir((*it)->T_f_w_.inverse().translation() - pos_); dir.normalize();
+        //   Eigen::Vector3d dir((*it)->T_f_w_.inverse().translation() - pos_); dir.normalize();
         //   double cos_angle = obs_dir.dot(dir);
         //   if(cos_angle < max_cos_angle)
         //   {
@@ -240,7 +240,7 @@ namespace lidar_selection
         //     max_it = it;
         //   }
         // }
-        Vector3d obs_dir(framepos - pos_);
+        Eigen::Vector3d obs_dir(framepos - pos_);
         obs_dir.normalize();
         auto max_it = obs_.begin();
         double maxdist = 0.0;
@@ -258,10 +258,10 @@ namespace lidar_selection
 
     void Point::optimize(const size_t n_iter)
     {
-        Vector3d old_point = pos_;
+        Eigen::Vector3d old_point = pos_;
         double chi2 = 0.0;
-        Matrix3d A;
-        Vector3d b;
+        Eigen::Matrix3d A;
+        Eigen::Vector3d b;
 
         for (size_t i = 0; i < n_iter; i++)
         {
@@ -273,9 +273,9 @@ namespace lidar_selection
             for (auto it = obs_.begin(); it != obs_.end(); ++it)
             {
                 Matrix23d J;
-                const Vector3d p_in_f((*it)->frame->T_f_w_ * pos_);
+                const Eigen::Vector3d p_in_f((*it)->frame->T_f_w_ * pos_);
                 Point::jacobian_xyz2uv(p_in_f, (*it)->frame->T_f_w_.rotation_matrix(), J);
-                const Vector2d e(vk::project2d((*it)->f) - vk::project2d(p_in_f));
+                const Eigen::Vector2d e(vk::project2d((*it)->f) - vk::project2d(p_in_f));
 
                 if ((*it)->type == Feature::EDGELET)
                 {
@@ -293,7 +293,7 @@ namespace lidar_selection
             }
 
             // solve linear system
-            const Vector3d dp(A.ldlt().solve(b));
+            const Eigen::Vector3d dp(A.ldlt().solve(b));
 
             // check if error increased
             if ((i > 0 && new_chi2 > chi2) || (bool)std::isnan((double)dp[0]))
@@ -307,7 +307,7 @@ namespace lidar_selection
             }
 
             // update the model
-            Vector3d new_point = pos_ + dp;
+            Eigen::Vector3d new_point = pos_ + dp;
             old_point = pos_;
             pos_ = new_point;
             chi2 = new_chi2;

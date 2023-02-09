@@ -71,7 +71,7 @@ Eigen::Matrix<T, 3, 3> Exp(const T &v1, const T &v2, const T &v3)
     }
 }
 
-/* Logrithm of a Rotation Matrix */
+/* Logrithm of a Rotation Eigen::Matrix */
 template <typename T>
 Eigen::Matrix<T, 3, 1> Log(const Eigen::Matrix<T, 3, 3> &R)
 {

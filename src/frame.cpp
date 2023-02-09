@@ -144,13 +144,13 @@ namespace lidar_selection
             setKeyPoints();
     }
 
-    bool Frame::isVisible(const Vector3d &xyz_w) const
+    bool Frame::isVisible(const Eigen::Vector3d &xyz_w) const
     {
-        Vector3d xyz_f = T_f_w_ * xyz_w;
+        Eigen::Vector3d xyz_f = T_f_w_ * xyz_w;
 
         if (xyz_f.z() < 0.0)
             return false; // point is behind the camera
-        Vector2d px = f2c(xyz_f);
+        Eigen::Vector2d px = f2c(xyz_f);
 
         if (px[0] >= 0.0 && px[1] >= 0.0 && px[0] < cam_->width() && px[1] < cam_->height())
             return true;

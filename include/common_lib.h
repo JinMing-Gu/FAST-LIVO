@@ -19,14 +19,10 @@
 #include <unordered_map>
 
 using namespace std;
-using namespace Eigen;
-using namespace Sophus;
 
 // #define DEBUG_PRINT
-#define USE_ikdtree
-// #define USE_ikdforest
-// #define USE_IKFOM
-// #define USE_FOV_Checker
+// #define DEPLOY
+// #define MP_EN
 
 #define print_line std::cout << __FILE__ << ", " << __LINE__ << std::endl;
 #define PI_M (3.14159265358)
@@ -52,27 +48,21 @@ typedef pcl::PointXYZRGB PointTypeRGB;
 typedef pcl::PointCloud<PointType> PointCloudXYZI;
 typedef vector<PointType, Eigen::aligned_allocator<PointType>> PointVector;
 typedef pcl::PointCloud<PointTypeRGB> PointCloudXYZRGB;
-
-typedef Vector3d V3D;
-typedef Vector2d V2D;
-typedef Matrix3d M3D;
-typedef Vector3f V3F;
-typedef Matrix3f M3F;
 typedef std::vector<float> FloatArray;
 
-#define MD(a, b) Matrix<double, (a), (b)>
-#define VD(a) Matrix<double, (a), 1>
-#define MF(a, b) Matrix<float, (a), (b)>
-#define VF(a) Matrix<float, (a), 1>
+#define MD(a, b) Eigen::Matrix<double, (a), (b)>
+#define VD(a) Eigen::Matrix<double, (a), 1>
+#define MF(a, b) Eigen::Matrix<float, (a), (b)>
+#define VF(a) Eigen::Matrix<float, (a), 1>
 
 #define HASH_P 116101
 #define MAX_N 10000000000
 
-extern M3D Eye3d;
-extern M3F Eye3f;
-extern V3D Zero3d;
-extern V3F Zero3f;
-extern Vector3d Lidar_offset_to_IMU;
+extern Eigen::Matrix3d Eye3d;
+extern Eigen::Matrix3f Eye3f;
+extern Eigen::Vector3d Zero3d;
+extern Eigen::Vector3f Zero3f;
+extern Eigen::Vector3d Lidar_offset_to_IMU;
 
 namespace lidar_selection
 {
@@ -91,11 +81,11 @@ namespace lidar_selection
     class Warp
     {
     public:
-        Matrix2d A_cur_ref;
+        Eigen::Matrix2d A_cur_ref;
         int search_level;
         // bool is_visited;
 
-        Warp(int level, Matrix2d warp_matrix) : search_level(level), A_cur_ref(warp_matrix) {}
+        Warp(int level, Eigen::Matrix2d warp_matrix) : search_level(level), A_cur_ref(warp_matrix) {}
     };
 }
 
@@ -208,16 +198,16 @@ struct LidarMeasureGroup
 
 struct SparseMap
 {
-    vector<V3D> points;
+    vector<Eigen::Vector3d> points;
     vector<float *> patch;
     vector<float> values;
     vector<cv::Mat> imgs;
-    vector<M3D> R_ref;
-    vector<V3D> P_ref;
-    vector<V3D> xyz_ref;
-    vector<V2D> px;
-    M3D Rcl;
-    V3D Pcl;
+    vector<Eigen::Matrix3d> R_ref;
+    vector<Eigen::Vector3d> P_ref;
+    vector<Eigen::Vector3d> xyz_ref;
+    vector<Eigen::Vector2d> px;
+    Eigen::Matrix3d Rcl;
+    Eigen::Vector3d Pcl;
     SparseMap()
     {
         this->points.clear();
@@ -228,7 +218,7 @@ struct SparseMap
         this->P_ref.clear();
         this->px.clear();
         this->xyz_ref.clear();
-        this->Rcl = M3D::Identity();
+        this->Rcl = Eigen::Matrix3d::Identity();
         this->Pcl = Zero3d;
     };
 
@@ -294,8 +284,8 @@ namespace lidar_selection
         vector<int> index;
         vector<float *> patch;
         vector<float *> patch_with_border;
-        vector<V2D> px_cur;
-        vector<V2D> propa_px_cur;
+        vector<Eigen::Vector2d> px_cur;
+        vector<Eigen::Vector2d> propa_px_cur;
         vector<int> search_levels;
         vector<PointPtr> voxel_points;
 
@@ -336,10 +326,10 @@ namespace lidar_selection
             vector<float *>().swap(this->patch_with_border);
             this->patch_with_border.reserve(500);
 
-            vector<V2D>().swap(this->px_cur); // Feature Alignment
+            vector<Eigen::Vector2d>().swap(this->px_cur); // Feature Alignment
             this->px_cur.reserve(500);
 
-            vector<V2D>().swap(this->propa_px_cur);
+            vector<Eigen::Vector2d>().swap(this->propa_px_cur);
             this->propa_px_cur.reserve(500);
 
             this->voxel_points.clear();
@@ -354,13 +344,13 @@ struct StatesGroup
 {
     StatesGroup()
     {
-        this->rot_end = M3D::Identity();
+        this->rot_end = Eigen::Matrix3d::Identity();
         this->pos_end = Zero3d;
         this->vel_end = Zero3d;
         this->bias_g = Zero3d;
         this->bias_a = Zero3d;
         this->gravity = Zero3d;
-        this->cov = Matrix<double, DIM_STATE, DIM_STATE>::Identity() * INIT_COV;
+        this->cov = Eigen::Matrix<double, DIM_STATE, DIM_STATE>::Identity() * INIT_COV;
     };
 
     StatesGroup(const StatesGroup &b)
@@ -386,7 +376,7 @@ struct StatesGroup
         return *this;
     };
 
-    StatesGroup operator+(const Matrix<double, DIM_STATE, 1> &state_add)
+    StatesGroup operator+(const Eigen::Matrix<double, DIM_STATE, 1> &state_add)
     {
         StatesGroup a;
         a.rot_end = this->rot_end * Exp(state_add(0, 0), state_add(1, 0), state_add(2, 0));
@@ -399,7 +389,7 @@ struct StatesGroup
         return a;
     };
 
-    StatesGroup &operator+=(const Matrix<double, DIM_STATE, 1> &state_add)
+    StatesGroup &operator+=(const Eigen::Matrix<double, DIM_STATE, 1> &state_add)
     {
         this->rot_end = this->rot_end * Exp(state_add(0, 0), state_add(1, 0), state_add(2, 0));
         this->pos_end += state_add.block<3, 1>(3, 0);
@@ -410,10 +400,10 @@ struct StatesGroup
         return *this;
     };
 
-    Matrix<double, DIM_STATE, 1> operator-(const StatesGroup &b)
+    Eigen::Matrix<double, DIM_STATE, 1> operator-(const StatesGroup &b)
     {
-        Matrix<double, DIM_STATE, 1> a;
-        M3D rotd(b.rot_end.transpose() * this->rot_end);
+        Eigen::Matrix<double, DIM_STATE, 1> a;
+        Eigen::Matrix3d rotd(b.rot_end.transpose() * this->rot_end);
         a.block<3, 1>(0, 0) = Log(rotd);
         a.block<3, 1>(3, 0) = this->pos_end - b.pos_end;
         a.block<3, 1>(6, 0) = this->vel_end - b.vel_end;
@@ -425,18 +415,18 @@ struct StatesGroup
 
     void resetpose()
     {
-        this->rot_end = M3D::Identity();
+        this->rot_end = Eigen::Matrix3d::Identity();
         this->pos_end = Zero3d;
         this->vel_end = Zero3d;
     }
 
-    M3D rot_end;                              // the estimated attitude (rotation matrix) at the end lidar point
-    V3D pos_end;                              // the estimated position at the end lidar point (world frame)
-    V3D vel_end;                              // the estimated velocity at the end lidar point (world frame)
-    V3D bias_g;                               // gyroscope bias
-    V3D bias_a;                               // accelerator bias
-    V3D gravity;                              // the estimated gravity acceleration
-    Matrix<double, DIM_STATE, DIM_STATE> cov; // states covariance
+    Eigen::Matrix3d rot_end;                              // the estimated attitude (rotation matrix) at the end lidar point
+    Eigen::Vector3d pos_end;                              // the estimated position at the end lidar point (world frame)
+    Eigen::Vector3d vel_end;                              // the estimated velocity at the end lidar point (world frame)
+    Eigen::Vector3d bias_g;                               // gyroscope bias
+    Eigen::Vector3d bias_a;                               // accelerator bias
+    Eigen::Vector3d gravity;                              // the estimated gravity acceleration
+    Eigen::Matrix<double, DIM_STATE, DIM_STATE> cov; // states covariance
 };
 
 template <typename T>
@@ -452,8 +442,8 @@ T deg2rad(T degrees)
 }
 
 template <typename T>
-auto set_pose6d(const double t, const Matrix<T, 3, 1> &a, const Matrix<T, 3, 1> &g,
-                const Matrix<T, 3, 1> &v, const Matrix<T, 3, 1> &p, const Matrix<T, 3, 3> &R)
+auto set_pose6d(const double t, const Eigen::Matrix<T, 3, 1> &a, const Eigen::Matrix<T, 3, 1> &g,
+                const Eigen::Matrix<T, 3, 1> &v, const Eigen::Matrix<T, 3, 1> &p, const Eigen::Matrix<T, 3, 3> &R)
 {
     Pose6D rot_kp;
     rot_kp.offset_time = t;
@@ -466,7 +456,7 @@ auto set_pose6d(const double t, const Matrix<T, 3, 1> &a, const Matrix<T, 3, 1> 
         for (int j = 0; j < 3; j++)
             rot_kp.rot[i * 3 + j] = R(i, j);
     }
-    // Map<M3D>(rot_kp.rot, 3,3) = R;
+    // Map<Eigen::Matrix3d>(rot_kp.rot, 3,3) = R;
     return move(rot_kp);
 }
 
@@ -478,10 +468,10 @@ where A0_i = [x_i, y_i, z_i], x0 = [A/D, B/D, C/D]^T, b0 = [-1, ..., -1]^T
 normvec:  normalized x0
 */
 template <typename T>
-bool esti_normvector(Matrix<T, 3, 1> &normvec, const PointVector &point, const T &threshold, const int &point_num)
+bool esti_normvector(Eigen::Matrix<T, 3, 1> &normvec, const PointVector &point, const T &threshold, const int &point_num)
 {
-    MatrixXf A(point_num, 3);
-    MatrixXf b(point_num, 1);
+    Eigen::MatrixXf A(point_num, 3);
+    Eigen::MatrixXf b(point_num, 1);
     b.setOnes();
     b *= -1.0f;
 
@@ -506,10 +496,10 @@ bool esti_normvector(Matrix<T, 3, 1> &normvec, const PointVector &point, const T
 }
 
 template <typename T>
-bool esti_plane(Matrix<T, 4, 1> &pca_result, const PointVector &point, const T &threshold)
+bool esti_plane(Eigen::Matrix<T, 4, 1> &pca_result, const PointVector &point, const T &threshold)
 {
-    Matrix<T, NUM_MATCH_POINTS, 3> A;
-    Matrix<T, NUM_MATCH_POINTS, 1> b;
+    Eigen::Matrix<T, NUM_MATCH_POINTS, 3> A;
+    Eigen::Matrix<T, NUM_MATCH_POINTS, 1> b;
     b.setOnes();
     b *= -1.0f;
 
@@ -520,7 +510,7 @@ bool esti_plane(Matrix<T, 4, 1> &pca_result, const PointVector &point, const T &
         A(j, 2) = point[j].z;
     }
 
-    Matrix<T, 3, 1> normvec = A.colPivHouseholderQr().solve(b);
+    Eigen::Matrix<T, 3, 1> normvec = A.colPivHouseholderQr().solve(b);
 
     T n = normvec.norm();
     pca_result(0) = normvec(0) / n;

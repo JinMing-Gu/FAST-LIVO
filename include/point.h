@@ -25,7 +25,7 @@
 namespace lidar_selection
 {
 
-    typedef Matrix<double, 2, 3> Matrix23d;
+    typedef Eigen::Matrix<double, 2, 3> Matrix23d;
 
     /// A 3D point on the surface of the scene.
     class Point : boost::noncopyable
@@ -42,10 +42,10 @@ namespace lidar_selection
 
         static int point_counter_; //!< Counts the number of created points. Used to set the unique id.
         int id_;                   //!< Unique ID of the point.
-        Vector3d pos_;             //!< 3d pos of the point in the world coordinate frame.
+        Eigen::Vector3d pos_;             //!< 3d pos of the point in the world coordinate frame.
         float x, y, z, intensity;
-        Vector3d normal_;             //!< Surface normal at point.
-        Matrix3d normal_information_; //!< Inverse covariance matrix of normal estimation.
+        Eigen::Vector3d normal_;             //!< Surface normal at point.
+        Eigen::Matrix3d normal_information_; //!< Inverse covariance matrix of normal estimation.
         bool normal_set_;             //!< Flag whether the surface normal was estimated or not.
         list<FeaturePtr> obs_;        //!< References to keyframes which observe the point.
         size_t n_obs_;                //!< Number of observations: Keyframes AND successful reprojections in intermediate frames.
@@ -57,11 +57,11 @@ namespace lidar_selection
         int last_structure_optim_; //!< Timestamp of last point optimization
         bool have_scaled;
         float value;
-        Point(const Vector3d &pos);
-        Point(const Vector3d &pos, FeaturePtr ftr);
+        Point(const Eigen::Vector3d &pos);
+        Point(const Eigen::Vector3d &pos, FeaturePtr ftr);
         ~Point();
 
-        void getFurthestViewObs(const Vector3d &framepos, FeaturePtr &ftr) const;
+        void getFurthestViewObs(const Eigen::Vector3d &framepos, FeaturePtr &ftr) const;
         void deleteFeatureRef(FeaturePtr ftr);
 
         /// Add a reference to a frame.
@@ -79,9 +79,9 @@ namespace lidar_selection
         bool getClosePose(const FramePtr &new_frame, FeaturePtr &ftr) const;
 
         /// Get Frame with similar viewpoint.
-        bool getCloseViewObs(const Vector3d &pos, FeaturePtr &obs, const Vector2d &cur_px) const;
+        bool getCloseViewObs(const Eigen::Vector3d &pos, FeaturePtr &obs, const Eigen::Vector2d &cur_px) const;
 
-        bool getCloseViewObs_test(const Vector3d &pos, FeaturePtr &obs, const Vector2d &cur_px, double &min_cos_angle) const;
+        bool getCloseViewObs_test(const Eigen::Vector3d &pos, FeaturePtr &obs, const Eigen::Vector2d &cur_px, double &min_cos_angle) const;
 
         /// Get number of observations.
         inline size_t nRefs() const { return obs_.size(); }
@@ -91,8 +91,8 @@ namespace lidar_selection
 
         /// Jacobian of point projection on unit plane (focal length = 1) in frame (f).
         inline static void jacobian_xyz2uv(
-            const Vector3d &p_in_f,
-            const Matrix3d &R_f_w,
+            const Eigen::Vector3d &p_in_f,
+            const Eigen::Matrix3d &R_f_w,
             Matrix23d &point_jac)
         {
             const double z_inv = 1.0 / p_in_f[2];

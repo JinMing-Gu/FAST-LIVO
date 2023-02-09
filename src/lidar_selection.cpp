@@ -6,17 +6,17 @@ namespace lidar_selection
     LidarSelector::LidarSelector(const int gridsize, SparseMap *sparsemap) : grid_size(gridsize), sparse_map(sparsemap)
     {
         downSizeFilter.setLeafSize(0.2, 0.2, 0.2);
-        G = Matrix<double, DIM_STATE, DIM_STATE>::Zero();
-        H_T_H = Matrix<double, DIM_STATE, DIM_STATE>::Zero();
-        Rli = M3D::Identity();
-        Rci = M3D::Identity();
-        Rcw = M3D::Identity();
-        Jdphi_dR = M3D::Identity();
-        Jdp_dt = M3D::Identity();
-        Jdp_dR = M3D::Identity();
-        Pli = V3D::Zero();
-        Pci = V3D::Zero();
-        Pcw = V3D::Zero();
+        G = Eigen::Matrix<double, DIM_STATE, DIM_STATE>::Zero();
+        H_T_H = Eigen::Matrix<double, DIM_STATE, DIM_STATE>::Zero();
+        Rli = Eigen::Matrix3d::Identity();
+        Rci = Eigen::Matrix3d::Identity();
+        Rcw = Eigen::Matrix3d::Identity();
+        Jdphi_dR = Eigen::Matrix3d::Identity();
+        Jdp_dt = Eigen::Matrix3d::Identity();
+        Jdp_dR = Eigen::Matrix3d::Identity();
+        Pli = Eigen::Vector3d::Zero();
+        Pci = Eigen::Vector3d::Zero();
+        Pcw = Eigen::Vector3d::Zero();
         width = 800;
         height = 600;
     }
@@ -35,7 +35,7 @@ namespace lidar_selection
         unordered_map<VOXEL_KEY, VOXEL_POINTS *>().swap(feat_map);
     }
 
-    void LidarSelector::set_extrinsic(const V3D &transl, const M3D &rot)
+    void LidarSelector::set_extrinsic(const Eigen::Vector3d &transl, const Eigen::Matrix3d &rot)
     {
         Pli = -rot.transpose() * transl;
         Rli = rot.transpose();
@@ -46,11 +46,11 @@ namespace lidar_selection
         sub_sparse_map = new SubSparseMap;
         Rci = sparse_map->Rcl * Rli;
         Pci = sparse_map->Rcl * Pli + sparse_map->Pcl;
-        M3D Ric;
-        V3D Pic;
+        Eigen::Matrix3d Ric;
+        Eigen::Vector3d Pic;
         Jdphi_dR = Rci;
         Pic = -Rci.transpose() * Pci;
-        M3D tmp;
+        Eigen::Matrix3d tmp;
         tmp << SKEW_SYM_MATRX(Pic);
         Jdp_dR = -Rci * tmp;
         width = cam->width();
@@ -91,12 +91,12 @@ namespace lidar_selection
         memset(map_index, 0, sizeof(int) * length);
         fill_n(map_dist, length, 10000);
         std::vector<PointPtr>(length).swap(voxel_points_);
-        std::vector<V3D>(length).swap(add_voxel_points_);
+        std::vector<Eigen::Vector3d>(length).swap(add_voxel_points_);
         voxel_points_.reserve(length);
         add_voxel_points_.reserve(length);
     }
 
-    void LidarSelector::dpi(V3D p, MD(2, 3) & J)
+    void LidarSelector::dpi(Eigen::Vector3d p, MD(2, 3) & J)
     {
         const double x = p[0];
         const double y = p[1];
@@ -110,7 +110,7 @@ namespace lidar_selection
         J(1, 2) = -fy * y * z_inv_2;
     }
 
-    float LidarSelector::CheckGoodPoints(cv::Mat img, V2D uv)
+    float LidarSelector::CheckGoodPoints(cv::Mat img, Eigen::Vector2d uv)
     {
         const float u_ref = uv[0];
         const float v_ref = uv[1];
@@ -124,7 +124,7 @@ namespace lidar_selection
         return fabs(gu) + fabs(gv);
     }
 
-    void LidarSelector::getpatch(cv::Mat img, V2D pc, float *patch_tmp, int level)
+    void LidarSelector::getpatch(cv::Mat img, Eigen::Vector2d pc, float *patch_tmp, int level)
     {
         const float u_ref = pc[0];
         const float v_ref = pc[1];
@@ -157,8 +157,8 @@ namespace lidar_selection
 
         for (int i = 0; i < pg->size(); i++)
         {
-            V3D pt(pg->points[i].x, pg->points[i].y, pg->points[i].z);
-            V2D pc(new_frame_->w2c(pt));
+            Eigen::Vector3d pt(pg->points[i].x, pg->points[i].y, pg->points[i].z);
+            Eigen::Vector2d pc(new_frame_->w2c(pt));
             if (new_frame_->cam_->isInFrame(pc.cast<int>(), (patch_size_half + 1) * 8)) // 20px is the patch size in the matcher
             {
                 int index = static_cast<int>(pc[0] / grid_size) * grid_n_height + static_cast<int>(pc[1] / grid_size);
@@ -182,14 +182,14 @@ namespace lidar_selection
         {
             if (grid_num[i] == TYPE_POINTCLOUD) // && (map_value[i]>=10)) //! debug
             {
-                V3D pt = add_voxel_points_[i];
-                V2D pc(new_frame_->w2c(pt));
+                Eigen::Vector3d pt = add_voxel_points_[i];
+                Eigen::Vector2d pc(new_frame_->w2c(pt));
                 float *patch = new float[patch_size_total * 3];
                 getpatch(img, pc, patch, 0);
                 getpatch(img, pc, patch, 1);
                 getpatch(img, pc, patch, 2);
                 PointPtr pt_new(new Point(pt));
-                Vector3d f = cam->cam2world(pc);
+                Eigen::Vector3d f = cam->cam2world(pc);
                 FeaturePtr ftr_new(new Feature(patch, pc, f, new_frame_->T_f_w_, map_value[i], 0));
                 ftr_new->img = new_frame_->img_pyr_[0];
                 // ftr_new->ImgPyr.resize(5);
@@ -214,7 +214,7 @@ namespace lidar_selection
 
     void LidarSelector::AddPoint(PointPtr pt_new)
     {
-        V3D pt_w(pt_new->pos_[0], pt_new->pos_[1], pt_new->pos_[2]);
+        Eigen::Vector3d pt_w(pt_new->pos_[0], pt_new->pos_[1], pt_new->pos_[2]);
         double voxel_size = 0.5;
         float loc_xyz[3];
         for (int j = 0; j < 3; j++)
@@ -242,34 +242,34 @@ namespace lidar_selection
 
     void LidarSelector::getWarpMatrixAffine(
         const vk::AbstractCamera &cam,
-        const Vector2d &px_ref,
-        const Vector3d &f_ref,
+        const Eigen::Vector2d &px_ref,
+        const Eigen::Vector3d &f_ref,
         const double depth_ref,
-        const SE3 &T_cur_ref,
+        const Sophus::SE3 &T_cur_ref,
         const int level_ref, // the corresponding pyrimid level of px_ref
         const int pyramid_level,
         const int halfpatch_size,
-        Matrix2d &A_cur_ref)
+        Eigen::Matrix2d &A_cur_ref)
     {
         // Compute affine warp matrix A_ref_cur
-        const Vector3d xyz_ref(f_ref * depth_ref);
-        Vector3d xyz_du_ref(cam.cam2world(px_ref + Vector2d(halfpatch_size, 0) * (1 << level_ref) * (1 << pyramid_level)));
-        Vector3d xyz_dv_ref(cam.cam2world(px_ref + Vector2d(0, halfpatch_size) * (1 << level_ref) * (1 << pyramid_level)));
-        //   Vector3d xyz_du_ref(cam.cam2world(px_ref + Vector2d(halfpatch_size,0)*(1<<level_ref)));
-        //   Vector3d xyz_dv_ref(cam.cam2world(px_ref + Vector2d(0,halfpatch_size)*(1<<level_ref)));
+        const Eigen::Vector3d xyz_ref(f_ref * depth_ref);
+        Eigen::Vector3d xyz_du_ref(cam.cam2world(px_ref + Eigen::Vector2d(halfpatch_size, 0) * (1 << level_ref) * (1 << pyramid_level)));
+        Eigen::Vector3d xyz_dv_ref(cam.cam2world(px_ref + Eigen::Vector2d(0, halfpatch_size) * (1 << level_ref) * (1 << pyramid_level)));
+        //   Eigen::Vector3d xyz_du_ref(cam.cam2world(px_ref + Eigen::Vector2d(halfpatch_size,0)*(1<<level_ref)));
+        //   Eigen::Vector3d xyz_dv_ref(cam.cam2world(px_ref + Eigen::Vector2d(0,halfpatch_size)*(1<<level_ref)));
         xyz_du_ref *= xyz_ref[2] / xyz_du_ref[2];
         xyz_dv_ref *= xyz_ref[2] / xyz_dv_ref[2];
-        const Vector2d px_cur(cam.world2cam(T_cur_ref * (xyz_ref)));
-        const Vector2d px_du(cam.world2cam(T_cur_ref * (xyz_du_ref)));
-        const Vector2d px_dv(cam.world2cam(T_cur_ref * (xyz_dv_ref)));
+        const Eigen::Vector2d px_cur(cam.world2cam(T_cur_ref * (xyz_ref)));
+        const Eigen::Vector2d px_du(cam.world2cam(T_cur_ref * (xyz_du_ref)));
+        const Eigen::Vector2d px_dv(cam.world2cam(T_cur_ref * (xyz_dv_ref)));
         A_cur_ref.col(0) = (px_du - px_cur) / halfpatch_size;
         A_cur_ref.col(1) = (px_dv - px_cur) / halfpatch_size;
     }
 
     void LidarSelector::warpAffine(
-        const Matrix2d &A_cur_ref,
+        const Eigen::Matrix2d &A_cur_ref,
         const cv::Mat &img_ref,
-        const Vector2d &px_ref,
+        const Eigen::Vector2d &px_ref,
         const int level_ref,
         const int search_level,
         const int pyramid_level,
@@ -277,7 +277,7 @@ namespace lidar_selection
         float *patch)
     {
         const int patch_size = halfpatch_size * 2;
-        const Matrix2f A_ref_cur = A_cur_ref.inverse().cast<float>();
+        const Eigen::Matrix2f A_ref_cur = A_cur_ref.inverse().cast<float>();
         if (isnan(A_ref_cur(0, 0)))
         {
             printf("Affine warp is NaN, probably camera has no translation\n"); // TODO
@@ -285,17 +285,17 @@ namespace lidar_selection
         }
         //   Perform the warp on a larger patch.
         //   float* patch_ptr = patch;
-        //   const Vector2f px_ref_pyr = px_ref.cast<float>() / (1<<level_ref) / (1<<pyramid_level);
-        //   const Vector2f px_ref_pyr = px_ref.cast<float>() / (1<<level_ref);
+        //   const Eigen::Vector2f px_ref_pyr = px_ref.cast<float>() / (1<<level_ref) / (1<<pyramid_level);
+        //   const Eigen::Vector2f px_ref_pyr = px_ref.cast<float>() / (1<<level_ref);
         for (int y = 0; y < patch_size; ++y)
         {
             for (int x = 0; x < patch_size; ++x) //, ++patch_ptr)
             {
                 // P[patch_size_total*level + x*patch_size+y]
-                Vector2f px_patch(x - halfpatch_size, y - halfpatch_size);
+                Eigen::Vector2f px_patch(x - halfpatch_size, y - halfpatch_size);
                 px_patch *= (1 << search_level);
                 px_patch *= (1 << pyramid_level);
-                const Vector2f px(A_ref_cur * px_patch + px_ref.cast<float>());
+                const Eigen::Vector2f px(A_ref_cur * px_patch + px_ref.cast<float>());
                 if (px[0] < 0 || px[1] < 0 || px[0] >= img_ref.cols - 1 || px[1] >= img_ref.rows - 1)
                     patch[patch_size_total * pyramid_level + y * patch_size + x] = 0;
                 // *patch_ptr = 0;
@@ -326,7 +326,7 @@ namespace lidar_selection
     }
 
     int LidarSelector::getBestSearchLevel(
-        const Matrix2d &A_cur_ref,
+        const Eigen::Matrix2d &A_cur_ref,
         const int max_level)
     {
         // Compute patch level in other image
@@ -389,7 +389,7 @@ namespace lidar_selection
         for (int i = 0; i < pg_down->size(); i++)
         {
             // Transform Point to world coordinate
-            V3D pt_w(pg_down->points[i].x, pg_down->points[i].y, pg_down->points[i].z);
+            Eigen::Vector3d pt_w(pg_down->points[i].x, pg_down->points[i].y, pg_down->points[i].z);
 
             // Determine the key of hash table
             for (int j = 0; j < 3; j++)
@@ -404,9 +404,9 @@ namespace lidar_selection
                 sub_feat_map[position] = 1.0;
             }
 
-            V3D pt_c(new_frame_->w2f(pt_w));
+            Eigen::Vector3d pt_c(new_frame_->w2f(pt_w));
 
-            V2D px;
+            Eigen::Vector2d px;
             if (pt_c[2] > 0)
             {
                 px[0] = fx * pt_c[0] / pt_c[2] + cx;
@@ -447,11 +447,11 @@ namespace lidar_selection
                     PointPtr pt = voxel_points[i];
                     if (pt == nullptr)
                         continue;
-                    V3D pt_cam(new_frame_->w2f(pt->pos_));
+                    Eigen::Vector3d pt_cam(new_frame_->w2f(pt->pos_));
                     if (pt_cam[2] < 0)
                         continue;
 
-                    V2D pc(new_frame_->w2c(pt->pos_));
+                    Eigen::Vector2d pc(new_frame_->w2c(pt->pos_));
 
                     FeaturePtr ref_ftr;
 
@@ -459,7 +459,7 @@ namespace lidar_selection
                     {
                         int index = static_cast<int>(pc[0] / grid_size) * grid_n_height + static_cast<int>(pc[1] / grid_size);
                         grid_num[index] = TYPE_MAP;
-                        Vector3d obs_vec(new_frame_->pos() - pt->pos_);
+                        Eigen::Vector3d obs_vec(new_frame_->pos() - pt->pos_);
 
                         float cur_dist = obs_vec.norm();
                         float cur_value = pt->value;
@@ -497,8 +497,8 @@ namespace lidar_selection
                 if (pt == nullptr)
                     continue;
 
-                V2D pc(new_frame_->w2c(pt->pos_));
-                V3D pt_cam(new_frame_->w2f(pt->pos_));
+                Eigen::Vector2d pc(new_frame_->w2c(pt->pos_));
+                Eigen::Vector3d pt_cam(new_frame_->w2f(pt->pos_));
 
                 bool depth_continous = false;
                 for (int u = -patch_size_half; u <= patch_size_half; u++)
@@ -545,7 +545,7 @@ namespace lidar_selection
                 // t_1 = omp_get_wtime();
 
                 int search_level;
-                Matrix2d A_cur_ref_zero;
+                Eigen::Matrix2d A_cur_ref_zero;
 
                 auto iter_warp = Warp_map.find(ref_ftr->id_);
                 if (iter_warp != Warp_map.end())
@@ -615,7 +615,7 @@ namespace lidar_selection
         float *ref_patch_with_border,
         float *ref_patch,
         const int n_iter,
-        Vector2d &cur_px_estimate,
+        Eigen::Vector2d &cur_px_estimate,
         int index)
     {
 #ifdef __ARM_NEON__
@@ -631,7 +631,7 @@ namespace lidar_selection
         // compute derivative of template and prepare inverse compositional
         float __attribute__((__aligned__(16))) ref_patch_dx[patch_area_];
         float __attribute__((__aligned__(16))) ref_patch_dy[patch_area_];
-        Matrix3f H;
+        Eigen::Matrix3f H;
         H.setZero();
 
         // compute gradient and hessian
@@ -643,7 +643,7 @@ namespace lidar_selection
             float *it = ref_patch_with_border + (y + 1) * ref_step + 1;
             for (int x = 0; x < patch_size_; ++x, ++it, ++it_dx, ++it_dy)
             {
-                Vector3f J;
+                Eigen::Vector3f J;
                 J[0] = 0.5 * (it[1] - it[-1]);
                 J[1] = 0.5 * (it[ref_step] - it[-ref_step]);
                 J[2] = 1;
@@ -652,7 +652,7 @@ namespace lidar_selection
                 H += J * J.transpose();
             }
         }
-        Matrix3f Hinv = H.inverse();
+        Eigen::Matrix3f Hinv = H.inverse();
         float mean_diff = 0;
 
         // Compute pixel location in new image:
@@ -664,7 +664,7 @@ namespace lidar_selection
         const int cur_step = cur_img.step.p[0];
         float chi2 = 0;
         chi2 = sub_sparse_map->propa_errors[index];
-        Vector3f update;
+        Eigen::Vector3f update;
         update.setZero();
         for (int iter = 0; iter < n_iter; ++iter)
         {
@@ -689,7 +689,7 @@ namespace lidar_selection
             float *it_ref_dx = ref_patch_dx;
             float *it_ref_dy = ref_patch_dy;
             float new_chi2 = 0.0;
-            Vector3f Jres;
+            Eigen::Vector3f Jres;
             Jres.setZero();
             for (int y = 0; y < patch_size_; ++y)
             {
@@ -754,7 +754,7 @@ namespace lidar_selection
         {
             bool res;
             int search_level = sub_sparse_map->search_levels[i];
-            Vector2d px_scaled(sub_sparse_map->px_cur[i] / (1 << search_level));
+            Eigen::Vector2d px_scaled(sub_sparse_map->px_cur[i] / (1 << search_level));
             res = align2D(new_frame_->img_pyr_[search_level], sub_sparse_map->patch_with_border[i], sub_sparse_map->patch[i],
                           20, px_scaled, i);
             sub_sparse_map->px_cur[i] = px_scaled * (1 << search_level);
@@ -772,19 +772,19 @@ namespace lidar_selection
         if (total_points == 0)
             return 0.;
         StatesGroup old_state = (*state);
-        V2D pc;
+        Eigen::Vector2d pc;
         MD(1, 2)
         Jimg;
         MD(2, 3)
         Jdpi;
         MD(1, 3)
         Jdphi, Jdp, JdR, Jdt;
-        VectorXd z;
-        // VectorXd R;
+        Eigen::VectorXd z;
+        // Eigen::VectorXd R;
         bool EKF_end = false;
         /* Compute J */
         float error = 0.0, last_error = total_residual, patch_error = 0.0, last_patch_error = 0.0, propa_error = 0.0;
-        // MatrixXd H;
+        // Eigen::MatrixXd H;
         bool z_init = true;
         const int H_DIM = total_points * patch_size_total;
 
@@ -807,13 +807,13 @@ namespace lidar_selection
             error = 0.0;
             propa_error = 0.0;
             n_meas_ = 0;
-            M3D Rwi(state->rot_end);
-            V3D Pwi(state->pos_end);
+            Eigen::Matrix3d Rwi(state->rot_end);
+            Eigen::Vector3d Pwi(state->pos_end);
             Rcw = Rci * Rwi.transpose();
             Pcw = -Rci * Rwi.transpose() * Pwi + Pci;
             Jdp_dt = Rci * Rwi.transpose();
 
-            M3D p_hat;
+            Eigen::Matrix3d p_hat;
             int i;
 
             for (i = 0; i < sub_sparse_map->index.size(); i++)
@@ -828,7 +828,7 @@ namespace lidar_selection
                 if (pt == nullptr)
                     continue;
 
-                V3D pf = Rcw * pt->pos_ + Pcw;
+                Eigen::Vector3d pf = Rcw * pt->pos_ + Pcw;
                 pc = cam->world2cam(pf);
                 // if((level==2 && iteration==0) || (level==1 && iteration==0) || level==0)
                 {
@@ -932,11 +932,11 @@ namespace lidar_selection
 
     void LidarSelector::updateFrameState(StatesGroup state)
     {
-        M3D Rwi(state.rot_end);
-        V3D Pwi(state.pos_end);
+        Eigen::Matrix3d Rwi(state.rot_end);
+        Eigen::Vector3d Pwi(state.pos_end);
         Rcw = Rci * Rwi.transpose();
         Pcw = -Rci * Rwi.transpose() * Pwi + Pci;
-        new_frame_->T_f_w_ = SE3(Rcw, Pcw);
+        new_frame_->T_f_w_ = Sophus::SE3(Rcw, Pcw);
     }
 
     void LidarSelector::addObservation(cv::Mat img)
@@ -950,8 +950,8 @@ namespace lidar_selection
             PointPtr pt = sub_sparse_map->voxel_points[i];
             if (pt == nullptr)
                 continue;
-            V2D pc(new_frame_->w2c(pt->pos_));
-            SE3 pose_cur = new_frame_->T_f_w_;
+            Eigen::Vector2d pc(new_frame_->w2c(pt->pos_));
+            Sophus::SE3 pose_cur = new_frame_->T_f_w_;
             bool add_flag = false;
             // if (sub_sparse_map->errors[i]<= 100*patch_size_total && sub_sparse_map->errors[i]>0) //&& align_flag[i]==1)
             {
@@ -966,15 +966,15 @@ namespace lidar_selection
                 // if(new_frame_->id_ >= last_feature->id_ + 20) add_flag = true;
 
                 // Step 2: delta_pose
-                SE3 pose_ref = last_feature->T_f_w_;
-                SE3 delta_pose = pose_ref * pose_cur.inverse();
+                Sophus::SE3 pose_ref = last_feature->T_f_w_;
+                Sophus::SE3 delta_pose = pose_ref * pose_cur.inverse();
                 double delta_p = delta_pose.translation().norm();
                 double delta_theta = (delta_pose.rotation_matrix().trace() > 3.0 - 1e-6) ? 0.0 : std::acos(0.5 * (delta_pose.rotation_matrix().trace() - 1));
                 if (delta_p > 0.5 || delta_theta > 10)
                     add_flag = true;
 
                 // Step 3: pixel distance
-                Vector2d last_px = last_feature->px;
+                Eigen::Vector2d last_px = last_feature->px;
                 double pixel_dist = (pc - last_px).norm();
                 if (pixel_dist > 40)
                     add_flag = true;
@@ -990,7 +990,7 @@ namespace lidar_selection
                 if (add_flag)
                 {
                     pt->value = vk::shiTomasiScore(img, pc[0], pc[1]);
-                    Vector3d f = cam->cam2world(pc);
+                    Eigen::Vector3d f = cam->cam2world(pc);
                     FeaturePtr ftr_new(new Feature(patch_temp, pc, f, new_frame_->T_f_w_, pt->value, sub_sparse_map->search_levels[i]));
                     ftr_new->img = new_frame_->img_pyr_[0];
                     ftr_new->id_ = new_frame_->id_;
@@ -1029,7 +1029,7 @@ namespace lidar_selection
         for (int i = 0; i < total_points; i++)
         {
             PointPtr pt = sub_sparse_map->voxel_points[i];
-            V2D pc(new_frame_->w2c(pt->pos_));
+            Eigen::Vector2d pc(new_frame_->w2c(pt->pos_));
             cv::Point2f pf;
             pf = cv::Point2f(pc[0], pc[1]);
             if (sub_sparse_map->errors[i] < 8000)                        // 5.5
@@ -1044,7 +1044,7 @@ namespace lidar_selection
         cv::putText(img_cp, text, origin, cv::FONT_HERSHEY_COMPLEX, 0.6, cv::Scalar(255, 255, 255), 1, 8, 0);
     }
 
-    V3F LidarSelector::getpixel(cv::Mat img, V2D pc)
+    Eigen::Vector3f LidarSelector::getpixel(cv::Mat img, Eigen::Vector2d pc)
     {
         const float u_ref = pc[0];
         const float v_ref = pc[1];
@@ -1060,7 +1060,7 @@ namespace lidar_selection
         float B = w_ref_tl * img_ptr[0] + w_ref_tr * img_ptr[0 + 3] + w_ref_bl * img_ptr[width * 3] + w_ref_br * img_ptr[width * 3 + 0 + 3];
         float G = w_ref_tl * img_ptr[1] + w_ref_tr * img_ptr[1 + 3] + w_ref_bl * img_ptr[1 + width * 3] + w_ref_br * img_ptr[width * 3 + 1 + 3];
         float R = w_ref_tl * img_ptr[2] + w_ref_tr * img_ptr[2 + 3] + w_ref_bl * img_ptr[2 + width * 3] + w_ref_br * img_ptr[width * 3 + 2 + 3];
-        V3F pixel(B, G, R);
+        Eigen::Vector3f pixel(B, G, R);
         return pixel;
     }
 

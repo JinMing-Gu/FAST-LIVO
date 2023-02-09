@@ -204,7 +204,7 @@ namespace lidar_selection
         return close_kfs.front().first;
     }
 
-    FramePtr Map::getFurthestKeyframe(const Vector3d &pos) const
+    FramePtr Map::getFurthestKeyframe(const Eigen::Vector3d &pos) const
     {
         FramePtr furthest_kf;
         double maxdist = 0.0;
@@ -233,13 +233,13 @@ namespace lidar_selection
         return found;
     }
 
-    void Map::transform(const Matrix3d &R, const Vector3d &t, const double &s)
+    void Map::transform(const Eigen::Matrix3d &R, const Eigen::Vector3d &t, const double &s)
     {
         for (auto it = keyframes_.begin(), ite = keyframes_.end(); it != ite; ++it)
         {
-            Vector3d pos = s * R * (*it)->pos() + t;
-            Matrix3d rot = R * (*it)->T_f_w_.rotation_matrix().inverse();
-            (*it)->T_f_w_ = SE3(rot, pos).inverse();
+            Eigen::Vector3d pos = s * R * (*it)->pos() + t;
+            Eigen::Matrix3d rot = R * (*it)->T_f_w_.rotation_matrix().inverse();
+            (*it)->T_f_w_ = Sophus::SE3(rot, pos).inverse();
             for (auto ftr = (*it)->fts_.begin(); ftr != (*it)->fts_.end(); ++ftr)
             {
                 if ((*ftr)->point == nullptr)
