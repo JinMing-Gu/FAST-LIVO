@@ -70,7 +70,7 @@ namespace lidar_selection
         void init();
         void getpatch(cv::Mat img, Eigen::Vector3d pg, float *patch_tmp, int level);
         void getpatch(cv::Mat img, Eigen::Vector2d pc, float *patch_tmp, int level);
-        void dpi(Eigen::Vector3d p, MD(2, 3) & J);
+        void dpi(Eigen::Vector3d p, Eigen::Matrix<double, 2, 3> & J);
         float UpdateState(cv::Mat img, float total_residual, int level);
         double NCC(float *ref_patch, float *cur_patch, int patch_size);
 

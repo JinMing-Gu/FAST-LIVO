@@ -1,7 +1,8 @@
 #include <ros/ros.h>
 #include <pcl_conversions/pcl_conversions.h>
 #include <sensor_msgs/PointCloud2.h>
-#include <livox_ros_driver/CustomMsg.h>
+
+#include "livox_ros_driver/CustomMsg.h"
 
 using namespace std;
 
@@ -16,6 +17,13 @@ enum LID_TYPE
     VELO16,
     OUST64
 }; //{1, 2, 3}
+enum TIME_UNIT
+{
+    SEC = 0,
+    MS = 1,
+    US = 2,
+    NS = 3
+};
 enum Feature
 {
     Nor,
@@ -64,12 +72,13 @@ namespace velodyne_ros
     {
         PCL_ADD_POINT4D;
         float intensity;
+        float time;
         uint16_t ring;
         EIGEN_MAKE_ALIGNED_OPERATOR_NEW
     };
 } // namespace velodyne_ros
 POINT_CLOUD_REGISTER_POINT_STRUCT(velodyne_ros::Point,
-                                  (float, x, x)(float, y, y)(float, z, z)(float, intensity, intensity)(uint16_t, ring, ring))
+                                  (float, x, x)(float, y, y)(float, z, z)(float, intensity, intensity)(float, time, time)(uint16_t, ring, ring))
 
 namespace ouster_ros
 {
@@ -103,7 +112,7 @@ POINT_CLOUD_REGISTER_POINT_STRUCT(ouster_ros::Point,
 class Preprocess
 {
   public:
-//   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+  // EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
   Preprocess();
   ~Preprocess();
@@ -116,11 +125,11 @@ class Preprocess
   PointCloudXYZI pl_full, pl_corn, pl_surf;
   PointCloudXYZI pl_buff[128]; //maximum 128 line lidar
   vector<orgtype> typess[128]; //maximum 128 line lidar
-  int lidar_type, point_filter_num, N_SCANS;;
+  float time_unit_scale;
+  int lidar_type, point_filter_num, N_SCANS, SCAN_RATE, time_unit;
   double blind;
-  bool feature_enabled;
+  bool feature_enabled, given_offset_time;
   ros::Publisher pub_full, pub_surf, pub_corn;
-    
 
   private:
   void avia_handler(const livox_ros_driver::CustomMsg::ConstPtr &msg);
@@ -131,7 +140,7 @@ class Preprocess
   int  plane_judge(const PointCloudXYZI &pl, vector<orgtype> &types, uint i, uint &i_nex, Eigen::Vector3d &curr_direct);
   bool small_plane(const PointCloudXYZI &pl, vector<orgtype> &types, uint i_cur, uint &i_nex, Eigen::Vector3d &curr_direct);
   bool edge_jump_judge(const PointCloudXYZI &pl, vector<orgtype> &types, uint i, Surround nor_dir);
-  
+
   int group_size;
   double disA, disB, inf_bound;
   double limit_maxmid, limit_midmin, limit_maxmin;

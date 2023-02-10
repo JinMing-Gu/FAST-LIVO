@@ -1,10 +1,12 @@
 #ifndef COMMON_LIB_H
 #define COMMON_LIB_H
 
-#include <so3_math.h>
+#include <unordered_map>
+#include <boost/shared_ptr.hpp>
+
 #include <Eigen/Eigen>
-#include <pcl/point_types.h>
-#include <pcl/point_cloud.h>
+#include <sophus/se3.h>
+
 #include <fast_livo/States.h>
 #include <fast_livo/Pose6D.h>
 #include <sensor_msgs/Imu.h>
@@ -13,10 +15,12 @@
 #include <tf/transform_broadcaster.h>
 #include <eigen_conversions/eigen_msg.h>
 #include <cv_bridge/cv_bridge.h>
+
 #include <opencv2/opencv.hpp>
-#include <sophus/se3.h>
-#include <boost/shared_ptr.hpp>
-#include <unordered_map>
+#include <pcl/point_types.h>
+#include <pcl/point_cloud.h>
+
+#include "so3_math.h"
 
 using namespace std;
 
@@ -26,14 +30,16 @@ using namespace std;
 
 #define print_line std::cout << __FILE__ << ", " << __LINE__ << std::endl;
 #define PI_M (3.14159265358)
-#define G_m_s2 (9.81)   // Gravaty const in GuangDong/China
-#define DIM_STATE (18)  // Dimension of states (Let Dim(SO(3)) = 3)
-#define DIM_PROC_N (12) // Dimension of process noise (Let Dim(SO(3)) = 3)
+#define G_m_s2 (9.81)   // 在中国广东的重力加速度
+#define DIM_STATE (18)  // 状态向量的维度 Dimension of states (Let Dim(SO(3)) = 3)
+#define DIM_PROC_N (12) // 过程噪声的维度 Dimension of process noise (Let Dim(SO(3)) = 3)
 #define CUBE_LEN (6.0)
 #define LIDAR_SP_LEN (2)
 #define INIT_COV (0.001)
 #define NUM_MATCH_POINTS (5)
 #define MAX_MEAS_DIM (10000)
+#define HASH_P (116101)
+#define MAX_N (10000000000)
 
 #define VEC_FROM_ARRAY(v) v[0], v[1], v[2]
 #define MAT_FROM_ARRAY(v) v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7], v[8]
@@ -46,17 +52,9 @@ typedef fast_livo::Pose6D Pose6D;
 typedef pcl::PointXYZINormal PointType;
 typedef pcl::PointXYZRGB PointTypeRGB;
 typedef pcl::PointCloud<PointType> PointCloudXYZI;
-typedef vector<PointType, Eigen::aligned_allocator<PointType>> PointVector;
 typedef pcl::PointCloud<PointTypeRGB> PointCloudXYZRGB;
+typedef std::vector<PointType, Eigen::aligned_allocator<PointType>> PointVector;
 typedef std::vector<float> FloatArray;
-
-#define MD(a, b) Eigen::Matrix<double, (a), (b)>
-#define VD(a) Eigen::Matrix<double, (a), 1>
-#define MF(a, b) Eigen::Matrix<float, (a), (b)>
-#define VF(a) Eigen::Matrix<float, (a), 1>
-
-#define HASH_P 116101
-#define MAX_N 10000000000
 
 extern Eigen::Matrix3d Eye3d;
 extern Eigen::Matrix3f Eye3f;
@@ -92,7 +90,6 @@ namespace lidar_selection
 // Key of hash table
 class VOXEL_KEY
 {
-
 public:
     int64_t x;
     int64_t y;
@@ -133,10 +130,8 @@ namespace std
             using std::hash;
             using std::size_t;
 
-            // Compute individual hash values for first,
-            // second and third and combine them using XOR
-            // and bit shifting:
-            //   return ((hash<int64_t>()(s.x) ^ (hash<int64_t>()(s.y) << 1)) >> 1) ^ (hash<int64_t>()(s.z) << 1);
+            // Compute individual hash values for first, second and third and combine them using XOR and bit shifting
+            // return ((hash<int64_t>()(s.x) ^ (hash<int64_t>()(s.y) << 1)) >> 1) ^ (hash<int64_t>()(s.z) << 1);
             return (((hash<int64_t>()(s.z) * HASH_P) % MAX_N + hash<int64_t>()(s.y)) * HASH_P) % MAX_N + hash<int64_t>()(s.x);
         }
     };
@@ -186,15 +181,9 @@ struct LidarMeasureGroup
             std::cout << "img_time:" << setprecision(20) << it->img_offset_time << endl;
         }
         std::cout << "is_lidar_end:" << this->is_lidar_end << "lidar_end_time:" << this->lidar->points.back().curvature / double(1000) << endl;
-        std::cout << "lidar_.points.size(): " << this->lidar->points.size() << endl
-                  << endl;
+        std::cout << "lidar_.points.size(): " << this->lidar->points.size() << endl << endl;
     };
 };
-
-// struct Frames
-// {
-//     vector<cv::Mat> imgs;
-// };
 
 struct SparseMap
 {
@@ -273,6 +262,7 @@ struct SparseMap
         float v = fabs(2 * (P[6] - P[4]) + P[2] - P[0] + P[10] - P[8]) + fabs(2 * (P[9] - P[1]) + P[10] - P[2] + P[8] - P[0]);
     }
 };
+typedef boost::shared_ptr<SparseMap> SparseMapPtr;
 
 namespace lidar_selection
 {
@@ -338,7 +328,6 @@ namespace lidar_selection
         }
     };
 }
-typedef boost::shared_ptr<SparseMap> SparseMapPtr;
 
 struct StatesGroup
 {
@@ -426,7 +415,7 @@ struct StatesGroup
     Eigen::Vector3d bias_g;                               // gyroscope bias
     Eigen::Vector3d bias_a;                               // accelerator bias
     Eigen::Vector3d gravity;                              // the estimated gravity acceleration
-    Eigen::Matrix<double, DIM_STATE, DIM_STATE> cov; // states covariance
+    Eigen::Matrix<double, DIM_STATE, DIM_STATE> cov;      // states covariance
 };
 
 template <typename T>
@@ -539,7 +528,7 @@ bool esti_plane(Eigen::Matrix<T, 4, 1> &pca_result, const PointVector &point, co
     // pca_result(1) = normvec(1) / n;
     // pca_result(2) = normvec(2) / n;
     // pca_result(3) = 1.0 / n;
+
     return true;
 }
-
 #endif

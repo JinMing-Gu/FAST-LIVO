@@ -1,6 +1,7 @@
 
 #ifndef IMU_PROCESSING_H
 #define IMU_PROCESSING_H
+
 #include <cmath>
 #include <math.h>
 #include <deque>
@@ -8,17 +9,12 @@
 #include <thread>
 #include <fstream>
 #include <csignal>
-#include <ros/ros.h>
-#include <so3_math.h>
-#include <Eigen/Eigen>
-#include <common_lib.h>
-#include <pcl/common/io.h>
-#include <pcl/point_cloud.h>
-#include <pcl/point_types.h>
 #include <condition_variable>
+
+#include <Eigen/Eigen>
+
+#include <ros/ros.h>
 #include <nav_msgs/Odometry.h>
-#include <pcl/common/transforms.h>
-#include <pcl/kdtree/kdtree_flann.h>
 #include <tf/transform_broadcaster.h>
 #include <eigen_conversions/eigen_msg.h>
 #include <pcl_conversions/pcl_conversions.h>
@@ -27,13 +23,19 @@
 #include <fast_livo/States.h>
 #include <geometry_msgs/Vector3.h>
 
-/// *************Preconfiguration
+#include <pcl/common/io.h>
+#include <pcl/point_cloud.h>
+#include <pcl/point_types.h>
+#include <pcl/common/transforms.h>
+#include <pcl/kdtree/kdtree_flann.h>
+
+#include "common_lib.h"
+#include "so3_math.h"
 
 #define MAX_INI_COUNT (200)
 
-const bool time_list(PointType &x, PointType &y); //{return (x.curvature < y.curvature);};
+const bool time_list(PointType &x, PointType &y);
 
-/// *************IMU Process and undistortion
 class ImuProcess
 {
 public:
@@ -47,7 +49,7 @@ public:
     void push_update_state(double offs_t, StatesGroup state);
     void set_extrinsic(const Eigen::Vector3d &transl, const Eigen::Matrix3d &rot);
     void set_extrinsic(const Eigen::Vector3d &transl);
-    void set_extrinsic(const MD(4, 4) & T);
+    void set_extrinsic(const Eigen::Matrix<double, 4, 4> & T);
     void set_gyr_cov_scale(const Eigen::Vector3d &scaler);
     void set_acc_cov_scale(const Eigen::Vector3d &scaler);
     void set_gyr_bias_cov(const Eigen::Vector3d &b_g);

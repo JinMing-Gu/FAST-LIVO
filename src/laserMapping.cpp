@@ -1,37 +1,3 @@
-// This is an advanced implementation of the algorithm described in the
-// following paper:
-//   J. Zhang and S. Singh. LOAM: Lidar Odometry and Mapping in Real-time.
-//     Robotics: Science and Systems Conference (RSS). Berkeley, CA, July 2014.
-
-// Modifier: Livox               dev@livoxtech.com
-
-// Copyright 2013, Ji Zhang, Carnegie Mellon University
-// Further contributions copyright (c) 2016, Southwest Research Institute
-// All rights reserved.
-//
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are met:
-//
-// 1. Redistributions of source code must retain the above copyright notice,
-//    this list of conditions and the following disclaimer.
-// 2. Redistributions in binary form must reproduce the above copyright notice,
-//    this list of conditions and the following disclaimer in the documentation
-//    and/or other materials provided with the distribution.
-// 3. Neither the name of the copyright holder nor the names of its
-//    contributors may be used to endorse or promote products derived from this
-//    software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-// ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
-// LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-// CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-// SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-// INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-// CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
-// ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
-// POSSIBILITY OF SUCH DAMAGE.
 #include <omp.h>
 #include <mutex>
 #include <math.h>
@@ -40,32 +6,35 @@
 #include <csignal>
 #include <unistd.h>
 #include <Python.h>
-#include <so3_math.h>
-#include <ros/ros.h>
+
 #include <Eigen/Core>
-// #include <common_lib.h>
+
+#include <ros/ros.h>
 #include <image_transport/image_transport.h>
-#include "IMU_Processing.h"
 #include <nav_msgs/Odometry.h>
 #include <nav_msgs/Path.h>
 #include <visualization_msgs/Marker.h>
 #include <pcl_conversions/pcl_conversions.h>
-#include <pcl/point_cloud.h>
-#include <pcl/point_types.h>
-#include <pcl/filters/voxel_grid.h>
-#include <pcl/io/pcd_io.h>
 #include <sensor_msgs/PointCloud2.h>
 #include <tf/transform_datatypes.h>
 #include <tf/transform_broadcaster.h>
 #include <fast_livo/States.h>
 #include <geometry_msgs/Vector3.h>
-#include <livox_ros_driver/CustomMsg.h>
-#include "preprocess.h"
 #include <cv_bridge/cv_bridge.h>
+
 #include <opencv2/opencv.hpp>
-#include <vikit/camera_loader.h>
+#include <pcl/point_cloud.h>
+#include <pcl/point_types.h>
+#include <pcl/filters/voxel_grid.h>
+#include <pcl/io/pcd_io.h>
+
+#include "preprocess.h"
+#include "IMU_Processing.h"
 #include "lidar_selection.h"
-#include <ikd-Tree/ikd_Tree.h>
+#include "so3_math.h"
+#include "ikd-Tree/ikd_Tree.h"
+#include "livox_ros_driver/CustomMsg.h"
+#include "vikit/camera_loader.h"
 
 #define INIT_TIME (0.5)
 #define MAXN (360000)
@@ -80,47 +49,82 @@ condition_variable sig_buffer;
 // mutex mtx_buffer_pointcloud;
 
 string root_dir = ROOT_DIR;
-string map_file_path, lid_topic, imu_topic, img_topic, config_file;
-;
+string map_file_path;
+string lid_topic;
+string imu_topic;
+string img_topic;
+string config_file;
+
 Eigen::Matrix3d Eye3d(Eigen::Matrix3d::Identity());
 Eigen::Matrix3f Eye3f(Eigen::Matrix3f::Identity());
 Eigen::Vector3d Zero3d(0, 0, 0);
 Eigen::Vector3f Zero3f(0, 0, 0);
-// Eigen::Vector3d Lidar_offset_to_IMU(0.04165, 0.02326, -0.0284); // Avia
 Eigen::Vector3d Lidar_offset_to_IMU;
-int iterCount = 0, feats_down_size = 0, NUM_MAX_ITERATIONS = 0, laserCloudValidNum = 0,
-    effct_feat_num = 0, time_log_counter = 0, publish_count = 0;
+
+int iterCount = 0;
+int feats_down_size = 0;
+int NUM_MAX_ITERATIONS = 0;
+int laserCloudValidNum = 0;
+int effct_feat_num = 0;
+int time_log_counter = 0;
+int publish_count = 0;
 int MIN_IMG_COUNT = 0;
 
 double res_mean_last = 0.05;
-// double gyr_cov_scale, acc_cov_scale;
-double gyr_cov_scale = 0, acc_cov_scale = 0;
-// double last_timestamp_lidar, last_timestamp_imu = -1.0;
-double last_timestamp_lidar = 0, last_timestamp_imu = -1.0, last_timestamp_img = -1.0;
-// double filter_size_corner_min, filter_size_surf_min, filter_size_map_min, fov_deg;
-double filter_size_corner_min = 0, filter_size_surf_min = 0, filter_size_map_min = 0, fov_deg = 0;
-// double cube_len, HALF_FOV_COS, FOV_DEG, total_distance, lidar_end_time, first_lidar_time = 0.0;
-double cube_len = 0, HALF_FOV_COS = 0, FOV_DEG = 0, total_distance = 0, lidar_end_time = 0, first_lidar_time = 0.0;
+
+double gyr_cov_scale = 0;
+double acc_cov_scale = 0;
+
+double last_timestamp_lidar = 0;
+double last_timestamp_imu = -1.0;
+double last_timestamp_img = -1.0;
+
+double filter_size_corner_min = 0;
+double filter_size_surf_min = 0;
+double filter_size_map_min = 0;
+double fov_deg = 0;
+
+double cube_len = 0;
+double HALF_FOV_COS = 0;
+double FOV_DEG = 0;
+double total_distance = 0;
+double lidar_end_time = 0;
+double first_lidar_time = 0.0;
 double first_img_time = -1.0;
-// double kdtree_incremental_time, kdtree_search_time;
-double kdtree_incremental_time = 0, kdtree_search_time = 0, kdtree_delete_time = 0.0;
-int kdtree_search_counter = 0, kdtree_size_st = 0, kdtree_size_end = 0, add_point_size = 0, kdtree_delete_counter = 0;
-;
-// double copy_time, readd_time, fov_check_time, readd_box_time, delete_box_time;
-double copy_time = 0, readd_time = 0, fov_check_time = 0, readd_box_time = 0, delete_box_time = 0;
+
+int kdtree_search_counter = 0;
+int kdtree_size_st = 0;
+int kdtree_size_end = 0;
+int add_point_size = 0;
+int kdtree_delete_counter = 0;
+
+// time log variables
+double kdtree_incremental_time = 0.0;
+double kdtree_search_time = 0.0;
+double kdtree_delete_time = 0.0;
+double copy_time = 0;
+double readd_time = 0;
+double fov_check_time = 0;
+double readd_box_time = 0;
+double delete_box_time = 0;
 double T1[MAXN], T2[MAXN], s_plot[MAXN], s_plot2[MAXN], s_plot3[MAXN], s_plot4[MAXN], s_plot5[MAXN], s_plot6[MAXN], s_plot7[MAXN];
+double match_time = 0;
+double solve_time = 0;
+double solve_const_H_time = 0;
 
-double match_time = 0, solve_time = 0, solve_const_H_time = 0;
-
-bool lidar_pushed, flg_reset, flg_exit = false;
+bool lidar_pushed;
+bool flg_reset;
+bool flg_exit = false;
 bool ncc_en;
 int dense_map_en = 1;
 int img_en = 1;
 int lidar_en = 1;
 int debug = 0;
 bool fast_lio_is_ready = false;
-int grid_size, patch_size;
-double outlier_threshold, ncc_thre;
+int grid_size;
+int patch_size;
+double outlier_threshold;
+double ncc_thre;
 
 vector<BoxPointType> cub_needrm;
 vector<BoxPointType> cub_needad;
@@ -139,8 +143,13 @@ vector<double> extrinR(9, 0.0);
 vector<double> cameraextrinT(3, 0.0);
 vector<double> cameraextrinR(9, 0.0);
 double total_residual;
-double LASER_POINT_COV, IMG_POINT_COV, cam_fx, cam_fy, cam_cx, cam_cy;
-bool flg_EKF_inited, flg_EKF_converged, EKF_stop_flg = 0;
+double LASER_POINT_COV;
+double IMG_POINT_COV;
+double cam_fx, cam_fy, cam_cx, cam_cy;
+bool flg_EKF_inited;
+bool flg_EKF_converged;
+bool EKF_stop_flg = false;
+
 // surf feature in map
 PointCloudXYZI::Ptr featsFromMap(new PointCloudXYZI());
 PointCloudXYZI::Ptr cube_points_add(new PointCloudXYZI());
@@ -188,7 +197,8 @@ void SigHandle(int sig)
 inline void dump_lio_state_to_log(FILE *fp)
 {
     Eigen::Vector3d rot_ang(Log(state.rot_end));
-    fprintf(fp, "%lf ", LidarMeasures.lidar_beg_time - first_lidar_time);
+    // fprintf(fp, "%lf ", LidarMeasures.lidar_beg_time - first_lidar_time);
+    fprintf(fp, "%lf ", LidarMeasures.lidar_beg_time);                                 // Time
     fprintf(fp, "%lf %lf %lf ", rot_ang(0), rot_ang(1), rot_ang(2));                   // Angle
     fprintf(fp, "%lf %lf %lf ", state.pos_end(0), state.pos_end(1), state.pos_end(2)); // Pos
     fprintf(fp, "%lf %lf %lf ", 0.0, 0.0, 0.0);                                        // omega
@@ -196,7 +206,7 @@ inline void dump_lio_state_to_log(FILE *fp)
     fprintf(fp, "%lf %lf %lf ", 0.0, 0.0, 0.0);                                        // Acc
     fprintf(fp, "%lf %lf %lf ", state.bias_g(0), state.bias_g(1), state.bias_g(2));    // Bias_g
     fprintf(fp, "%lf %lf %lf ", state.bias_a(0), state.bias_a(1), state.bias_a(2));    // Bias_a
-    fprintf(fp, "%lf %lf %lf ", state.gravity(0), state.gravity(1), state.gravity(2)); // Bias_a
+    fprintf(fp, "%lf %lf %lf ", state.gravity(0), state.gravity(1), state.gravity(2)); // Gravity
     fprintf(fp, "\r\n");
     fflush(fp);
 }
@@ -646,8 +656,7 @@ void publish_frame_world_rgb(const ros::Publisher &pubLaserCloudFullRes, lidar_s
 
     // for (int i = 0; i < size; i++)
     // {
-    //     RGBpointBodyToWorld(&laserCloudFullRes->points[i], \
-    //                         &laserCloudWorld->points[i]);
+    //     RGBpointBodyToWorld(&laserCloudFullRes->points[i], &laserCloudWorld->points[i]);
     // }
     uint size = pcl_wait_pub->points.size();
     PointCloudXYZRGB::Ptr laserCloudWorldRGB(new PointCloudXYZRGB(size, 1));
@@ -709,8 +718,7 @@ void publish_frame_world(const ros::Publisher &pubLaserCloudFullRes)
 
     // for (int i = 0; i < size; i++)
     // {
-    //     RGBpointBodyToWorld(&laserCloudFullRes->points[i], \
-    //                         &laserCloudWorld->points[i]);
+    //     RGBpointBodyToWorld(&laserCloudFullRes->points[i], &laserCloudWorld->points[i]);
     // }
     uint size = pcl_wait_pub->points.size();
     // PointCloudXYZ::Ptr laserCloudWorld(new PointCloudXYZ(size, 1));
@@ -744,8 +752,7 @@ void publish_visual_world_map(const ros::Publisher &pubVisualCloud)
 
     // for (int i = 0; i < size; i++)
     // {
-    //     RGBpointBodyToWorld(&laserCloudFullRes->points[i], \
-    //                         &laserCloudWorld->points[i]);
+    //     RGBpointBodyToWorld(&laserCloudFullRes->points[i], &laserCloudWorld->points[i]);
     // }
     // mtx_buffer_pointcloud.lock();
     PointCloudXYZI::Ptr pcl_visual_wait_pub(new PointCloudXYZI());
@@ -773,8 +780,7 @@ void publish_visual_world_sub_map(const ros::Publisher &pubSubVisualCloud)
 
     // for (int i = 0; i < size; i++)
     // {
-    //     RGBpointBodyToWorld(&laserCloudFullRes->points[i], \
-    //                         &laserCloudWorld->points[i]);
+    //     RGBpointBodyToWorld(&laserCloudFullRes->points[i], &laserCloudWorld->points[i]);
     // }
     // mtx_buffer_pointcloud.lock();
     PointCloudXYZI::Ptr sub_pcl_visual_wait_pub(new PointCloudXYZI());
@@ -905,7 +911,7 @@ void readParameters(ros::NodeHandle &nh)
     nh.param<int>("preprocess/lidar_type", p_pre->lidar_type, AVIA);
     nh.param<int>("preprocess/scan_line", p_pre->N_SCANS, 16);
     nh.param<int>("point_filter_num", p_pre->point_filter_num, 2);
-    nh.param<bool>("feature_extract_enable", p_pre->feature_enabled, 0);
+    nh.param<bool>("feature_extract_enable", p_pre->feature_enabled, false);
     nh.param<vector<double>>("mapping/extrinsic_T", extrinT, vector<double>());
     nh.param<vector<double>>("mapping/extrinsic_R", extrinR, vector<double>());
     nh.param<vector<double>>("camera/Pcl", cameraextrinT, vector<double>());
@@ -946,9 +952,9 @@ int main(int argc, char **argv)
     path.header.frame_id = "camera_init";
 
 /*** variables definition ***/
-    VD(DIM_STATE)
+    Eigen::Matrix<double, DIM_STATE, 1>
     solution;
-    MD(DIM_STATE, DIM_STATE)
+    Eigen::Matrix<double, DIM_STATE, DIM_STATE>
     G, H_T_H, I_STATE;
     Eigen::Vector3d rot_add, t_add;
     StatesGroup state_propagat;
@@ -1098,8 +1104,7 @@ int main(int argc, char **argv)
                 // PointCloudXYZI::Ptr laserCloudWorld(new PointCloudXYZI(size, 1));
                 // for (int i = 0; i < size; i++)
                 // {
-                //     pointBodyToWorld(&feats_undistort->points[i], \
-                //                         &laserCloudWorld->points[i]);
+                //     pointBodyToWorld(&feats_undistort->points[i], &laserCloudWorld->points[i]);
                 // }
 
                 lidar_selector->detect(LidarMeasures.measures.back().img, pcl_wait_pub);
@@ -1268,7 +1273,7 @@ int main(int argc, char **argv)
                     if (!point_selected_surf[i] || points_near.size() < NUM_MATCH_POINTS)
                         continue;
 
-                    VF(4)
+                    Eigen::Matrix<float, 4, 1>
                     pabcd;
                     point_selected_surf[i] = false;
                     if (esti_plane(pabcd, points_near, 0.1f)) //(planeValid)
@@ -1342,8 +1347,8 @@ int main(int argc, char **argv)
                 {
                     cout << "||||||||||Initiallizing LiDar||||||||||" << endl;
                     /*** only run in initialization period ***/
-                    Eigen::MatrixXd H_init(MD(9, DIM_STATE)::Zero());
-                    Eigen::MatrixXd z_init(VD(9)::Zero());
+                    Eigen::MatrixXd H_init(Eigen::Matrix<double, 9, DIM_STATE>::Zero());
+                    Eigen::MatrixXd z_init(Eigen::Matrix<double, 9, 1>::Zero());
                     H_init.block<3, 3>(0, 0) = Eigen::Matrix3d::Identity();
                     H_init.block<3, 3>(3, 3) = Eigen::Matrix3d::Identity();
                     H_init.block<3, 3>(6, 15) = Eigen::Matrix3d::Identity();
@@ -1351,7 +1356,7 @@ int main(int argc, char **argv)
                     z_init.block<3, 1>(0, 0) = -state.pos_end;
 
                     auto H_init_T = H_init.transpose();
-                    auto &&K_init = state.cov * H_init_T * (H_init * state.cov * H_init_T + 0.0001 * MD(9, 9)::Identity()).inverse();
+                    auto &&K_init = state.cov * H_init_T * (H_init * state.cov * H_init_T + 0.0001 * Eigen::Matrix<double, 9, 9>::Identity()).inverse();
                     solution = K_init * z_init;
 
                     // solution.block<9,1>(0,0).setZero();
@@ -1367,7 +1372,7 @@ int main(int argc, char **argv)
                     auto &&HTz = Hsub_T * meas_vec;
                     H_T_H.block<6, 6>(0, 0) = Hsub_T * Hsub;
                     // EigenSolver<Eigen::Matrix<double, 6, 6>> es(H_T_H.block<6,6>(0,0));
-                    MD(DIM_STATE, DIM_STATE) &&K_1 =
+                    Eigen::Matrix<double, DIM_STATE, DIM_STATE> &&K_1 =
                         (H_T_H + (state.cov / LASER_POINT_COV).inverse()).inverse();
                     G.block<DIM_STATE, 6>(0, 0) = K_1.block<DIM_STATE, 6>(0, 0) * H_T_H.block<6, 6>(0, 0);
                     auto vec = state_propagat - state;
@@ -1376,7 +1381,7 @@ int main(int argc, char **argv)
                     int minRow, minCol;
                     if (0) // if(V.minCoeff(&minRow, &minCol) < 1.0f)
                     {
-                        VD(6)
+                        Eigen::Matrix<double, 6, 1>
                         V = H_T_H.block<6, 6>(0, 0).eigenvalues().real();
                         cout << "!!!!!! Degeneration Happend, eigen values: " << V.transpose() << endl;
                         EKF_stop_flg = true;
@@ -1419,9 +1424,9 @@ int main(int argc, char **argv)
                         position_last = state.pos_end;
                         geoQuat = tf::createQuaternionMsgFromRollPitchYaw(euler_cur(0), euler_cur(1), euler_cur(2));
 
-                        VD(DIM_STATE)
+                        Eigen::Matrix<double, DIM_STATE, 1>
                         K_sum = K.rowwise().sum();
-                        VD(DIM_STATE)
+                        Eigen::Matrix<double, DIM_STATE, 1>
                         P_diag = state.cov.diagonal();
                         // cout<<"K: "<<K_sum.transpose()<<endl;
                         // cout<<"P: "<<P_diag.transpose()<<endl;
@@ -1498,7 +1503,7 @@ int main(int argc, char **argv)
             fout_out << setw(20) << LidarMeasures.last_update_time - first_lidar_time << " " << euler_cur.transpose() * 57.3 << " " << state.pos_end.transpose() << " " << state.vel_end.transpose()
                      << " " << state.bias_g.transpose() << " " << state.bias_a.transpose() << " " << state.gravity.transpose() << " " << feats_undistort->points.size() << endl;
         }
-        // dump_lio_state_to_log(fp);
+        dump_lio_state_to_log(fp);
     }
     //--------------------------save map---------------
     // string surf_filename(map_file_path + "/surf.pcd");
