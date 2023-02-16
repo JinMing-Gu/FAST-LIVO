@@ -39,9 +39,9 @@ mapping:
                    0, 0, 1]
 
 camera:
-    # img_topic: /usb_cam/image_raw
-    # img_topic:  /camera/image_color
-    img_topic: /left_camera/image
+    img_topic: /usb_cam/image_raw
+    # img_topic: /camera/image_color
+    # img_topic: /left_camera/image
     #xiyuan
     Rcl: [0.00162756,-0.999991,0.00390957,
          -0.0126748,-0.00392989,-0.999912,

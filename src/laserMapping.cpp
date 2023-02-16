@@ -188,7 +188,8 @@ void SigHandle(int sig)
 inline void dump_lio_state_to_log(FILE *fp)
 {
     Eigen::Vector3d rot_ang(Log(state.rot_end));
-    fprintf(fp, "%lf ", LidarMeasures.lidar_beg_time - first_lidar_time);
+    // fprintf(fp, "%lf ", LidarMeasures.lidar_beg_time - first_lidar_time);
+    fprintf(fp, "%lf ", LidarMeasures.lidar_beg_time);                                 // Time
     fprintf(fp, "%lf %lf %lf ", rot_ang(0), rot_ang(1), rot_ang(2));                   // Angle
     fprintf(fp, "%lf %lf %lf ", state.pos_end(0), state.pos_end(1), state.pos_end(2)); // Pos
     fprintf(fp, "%lf %lf %lf ", 0.0, 0.0, 0.0);                                        // omega
@@ -196,7 +197,7 @@ inline void dump_lio_state_to_log(FILE *fp)
     fprintf(fp, "%lf %lf %lf ", 0.0, 0.0, 0.0);                                        // Acc
     fprintf(fp, "%lf %lf %lf ", state.bias_g(0), state.bias_g(1), state.bias_g(2));    // Bias_g
     fprintf(fp, "%lf %lf %lf ", state.bias_a(0), state.bias_a(1), state.bias_a(2));    // Bias_a
-    fprintf(fp, "%lf %lf %lf ", state.gravity(0), state.gravity(1), state.gravity(2)); // Bias_a
+    fprintf(fp, "%lf %lf %lf ", state.gravity(0), state.gravity(1), state.gravity(2)); // Gravity
     fprintf(fp, "\r\n");
     fflush(fp);
 }
@@ -1498,7 +1499,7 @@ int main(int argc, char **argv)
             fout_out << setw(20) << LidarMeasures.last_update_time - first_lidar_time << " " << euler_cur.transpose() * 57.3 << " " << state.pos_end.transpose() << " " << state.vel_end.transpose()
                      << " " << state.bias_g.transpose() << " " << state.bias_a.transpose() << " " << state.gravity.transpose() << " " << feats_undistort->points.size() << endl;
         }
-        // dump_lio_state_to_log(fp);
+        dump_lio_state_to_log(fp);
     }
     //--------------------------save map---------------
     // string surf_filename(map_file_path + "/surf.pcd");
