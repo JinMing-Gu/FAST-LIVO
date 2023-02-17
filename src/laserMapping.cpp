@@ -130,7 +130,7 @@ vector<BoxPointType> cub_needrm;
 vector<BoxPointType> cub_needad;
 // deque<sensor_msgs::PointCloud2::ConstPtr> lidar_buffer;
 deque<PointCloudXYZI::Ptr> lidar_buffer;
-deque<double> time_buffer;
+deque<double> lidar_time_buffer;
 deque<sensor_msgs::Imu::ConstPtr> imu_buffer;
 deque<cv::Mat> img_buffer;
 deque<double> img_time_buffer;
@@ -366,9 +366,9 @@ void standard_pcl_cbk(const sensor_msgs::PointCloud2::ConstPtr &msg)
     // ROS_INFO("get point cloud at time: %.6f and size: %d", msg->header.stamp.toSec() - 0.1, ptr->points.size());
     printf("[ INFO ]: get point cloud at time: %.6f and size: %d.\n", msg->header.stamp.toSec(), int(ptr->points.size()));
     lidar_buffer.push_back(ptr);
-    // time_buffer.push_back(msg->header.stamp.toSec() - 0.1);
+    // lidar_time_buffer.push_back(msg->header.stamp.toSec() - 0.1);
     // last_timestamp_lidar = msg->header.stamp.toSec() - 0.1;
-    time_buffer.push_back(msg->header.stamp.toSec());
+    lidar_time_buffer.push_back(msg->header.stamp.toSec());
     last_timestamp_lidar = msg->header.stamp.toSec();
     mtx_buffer.unlock();
     sig_buffer.notify_all();
@@ -386,7 +386,7 @@ void livox_pcl_cbk(const livox_ros_driver::CustomMsg::ConstPtr &msg)
     PointCloudXYZI::Ptr ptr(new PointCloudXYZI());
     p_pre->process(msg, ptr);
     lidar_buffer.push_back(ptr);
-    time_buffer.push_back(msg->header.stamp.toSec());
+    lidar_time_buffer.push_back(msg->header.stamp.toSec());
     last_timestamp_lidar = msg->header.stamp.toSec();
 
     mtx_buffer.unlock();
@@ -427,8 +427,8 @@ cv::Mat getImageFromMsg(const sensor_msgs::ImageConstPtr &img_msg)
 void img_cbk(const sensor_msgs::ImageConstPtr &msg)
 {
     // cout<<"In Img_cbk"<<endl;
-    // if (first_img_time<0 && time_buffer.size()>0) {
-    //     first_img_time = msg->header.stamp.toSec() - time_buffer.front();
+    // if (first_img_time<0 && lidar_time_buffer.size()>0) {
+    //     first_img_time = msg->header.stamp.toSec() - lidar_time_buffer.front();
     // }
     if (!img_en)
     {
@@ -456,54 +456,77 @@ void img_cbk(const sensor_msgs::ImageConstPtr &msg)
 
 bool sync_packages(LidarMeasureGroup &meas)
 {
+    // 如果存在LiDAR数据或Camera数据, 则进行时间同步
     if ((lidar_buffer.empty() && img_buffer.empty()))
-    { // has lidar topic or img topic?
+    {
         return false;
     }
-    // ROS_ERROR("In sync");
-    if (meas.is_lidar_end) // If meas.is_lidar_end==true, means it just after scan end, clear all buffer in meas.
+
+    // is_lidar_end = true, 表示当前LiDAR帧结束时间戳之前没有Camera数据, 当前LiDAR帧结束时间戳之前的Camera数据已经全部处理完成, 删除MeasureGroup中的所有数据
+    // is_lidar_end = false, 表示当前LiDAR帧结束时间戳之前存在Camera数据, 当前LiDAR帧结束时间戳之前的Camera数据正在处理
+    if (meas.is_lidar_end)
     {
         meas.measures.clear();
         meas.is_lidar_end = false;
     }
 
+    // lidar_pushed = true, 表示上一LiDAR帧正在处理, 不进入当前LiDAR帧的处理流程, 不执行该分支
+    // lidar_pushed = false, 表示上一LiDAR帧已经处理完成, 进入当前LiDAR帧的处理流程, 执行该分支
     if (!lidar_pushed)
-    { // If not in lidar scan, need to generate new meas
+    {
+        // 如果不存在LiDAR数据, 则结束时间同步
         if (lidar_buffer.empty())
         {
-            // ROS_ERROR("out sync");
             return false;
         }
-        meas.lidar = lidar_buffer.front(); // push the firsrt lidar topic
+
+        // 获取最旧的LiDAR帧作为当前LiDAR帧, 并存储在LidarMeasureGroup中
+        meas.lidar = lidar_buffer.front();
+
+        // 如果当前LiDAR帧中点的数量过少, 则结束时间同步
         if (meas.lidar->points.size() <= 1)
         {
             mtx_buffer.lock();
-            if (img_buffer.size() > 0) // temp method, ignore img topic when no lidar points, keep sync
+            // 保证LiDAR与Camera的时间戳不会相差太多
+            if (img_buffer.size() > 0)
             {
                 lidar_buffer.pop_front();
+                lidar_time_buffer.pop_front();
                 img_buffer.pop_front();
+                img_time_buffer.pop_front();
             }
             mtx_buffer.unlock();
             sig_buffer.notify_all();
-            // ROS_ERROR("out sync");
+
             return false;
         }
-        sort(meas.lidar->points.begin(), meas.lidar->points.end(), time_list);                     // sort by sample timestamp
-        meas.lidar_beg_time = time_buffer.front();                                                 // generate lidar_beg_time
-        lidar_end_time = meas.lidar_beg_time + meas.lidar->points.back().curvature / double(1000); // calc lidar scan end time
-        lidar_pushed = true;                                                                       // flag
+
+        // sort by sample timestamp
+        sort(meas.lidar->points.begin(), meas.lidar->points.end(), time_list);
+        // generate lidar_beg_time
+        meas.lidar_beg_time = lidar_time_buffer.front();
+        // calc lidar scan end time
+        lidar_end_time = meas.lidar_beg_time + meas.lidar->points.back().curvature / double(1000);
+
+        // 当前LiDAR帧正在处理, 不进入下一LiDAR帧的处理流程
+        lidar_pushed = true;
     }
 
+    // 如果只有LiDAR数据, 没有Camera数据, 则执行该分支, 只进行LiDAR数据与IMU数据之间的时间同步
     if (img_buffer.empty())
-    { // no img topic, means only has lidar topic
+    {
+        // 最新的IMU帧时间戳要在当前LiDAR帧结束时间戳之后, 要保证前向传播的完全性
         if (last_timestamp_imu < lidar_end_time + 0.02)
-        { // imu message needs to be larger than lidar_end_time, keep complete propagate.
-            // ROS_ERROR("out sync");
+        {
             return false;
         }
-        struct MeasureGroup m; // standard method to keep imu message.
+
+        struct MeasureGroup m;
+        // 获取最旧的IMU帧时间戳
         double imu_time = imu_buffer.front()->header.stamp.toSec();
         m.imu.clear();
+
+        // 获取所有当前LiDAR帧结束时间戳之前的IMU数据, 存储在MeasureGroup中, 并从imu_buffer中删除
         mtx_buffer.lock();
         while ((!imu_buffer.empty() && (imu_time < lidar_end_time)))
         {
@@ -513,30 +536,47 @@ bool sync_packages(LidarMeasureGroup &meas)
             m.imu.push_back(imu_buffer.front());
             imu_buffer.pop_front();
         }
+        // 当前LiDAR帧已经处理完成, 并从lidar_buffer中删除
         lidar_buffer.pop_front();
-        time_buffer.pop_front();
+        lidar_time_buffer.pop_front();
         mtx_buffer.unlock();
         sig_buffer.notify_all();
-        lidar_pushed = false;     // sync one whole lidar scan.
-        meas.is_lidar_end = true; // process lidar topic, so timestamp should be lidar scan end.
+
+        // 当前LiDAR帧已经处理完成, 进入下一LiDAR帧的处理流程
+        lidar_pushed = false;
+
+        // 当前LiDAR帧结束时间戳之前没有Camera数据, 当前LiDAR帧结束时间戳之前的Camera数据已经全部处理完成
+        meas.is_lidar_end = true;
+
         meas.measures.push_back(m);
-        // ROS_ERROR("out sync");
+
         return true;
     }
-    struct MeasureGroup m;
+
     // cout<<"lidar_buffer.size(): "<<lidar_buffer.size()<<" img_buffer.size(): "<<img_buffer.size()<<endl;
-    // cout<<"time_buffer.size(): "<<time_buffer.size()<<" img_time_buffer.size(): "<<img_time_buffer.size()<<endl;
+    // cout<<"lidar_time_buffer.size(): "<<lidar_time_buffer.size()<<" img_time_buffer.size(): "<<img_time_buffer.size()<<endl;
     // cout<<"img_time_buffer.front(): "<<img_time_buffer.front()<<"lidar_end_time: "<<lidar_end_time<<"last_timestamp_imu: "<<last_timestamp_imu<<endl;
+
+    // 一般情况下, 首先进入分支2, 直到找到在当前LiDAR帧结束时间戳之前的, 离当前LiDAR帧结束时间戳最近的Camera帧为止, 将该Camera帧设置为当前Camera帧, 并完成Camera数据与IMU数据之间的时间同步
+    // 找到上述的Camera帧后不再进入该分支2, 因为达成最旧的Camera帧时间戳在当前LiDAR帧结束时间戳之后的条件, 所以进入分支1进行LiDAR数据与IMU数据之间的时间同步
+    struct MeasureGroup m;
+    // has img topic, but img topic timestamp larger than lidar end time, process lidar topic.
+    // 如果最旧的Camera帧时间戳在当前LiDAR帧结束时间戳之后, 则执行该分支, 相当于没有Camera数据, 只进行LiDAR数据与IMU数据之间的时间同步
     if ((img_time_buffer.front() > lidar_end_time))
-    { // has img topic, but img topic timestamp larger than lidar end time, process lidar topic.
+    {
+        // 最新的IMU帧时间戳要在当前LiDAR帧结束时间戳之后, 要保证前向传播的完全性
         if (last_timestamp_imu < lidar_end_time + 0.02)
         {
             // ROS_ERROR("out sync");
             return false;
         }
+
+        // 获取最旧的IMU帧时间戳
         double imu_time = imu_buffer.front()->header.stamp.toSec();
         m.imu.clear();
+
         mtx_buffer.lock();
+        // 获取所有当前LiDAR帧结束时间戳之前的IMU数据, 存储在MeasureGroup中, 并从imu_buffer中删除
         while ((!imu_buffer.empty() && (imu_time < lidar_end_time)))
         {
             imu_time = imu_buffer.front()->header.stamp.toSec();
@@ -545,27 +585,42 @@ bool sync_packages(LidarMeasureGroup &meas)
             m.imu.push_back(imu_buffer.front());
             imu_buffer.pop_front();
         }
+        // 当前LiDAR帧已经处理完成, 并从lidar_buffer中删除
         lidar_buffer.pop_front();
-        time_buffer.pop_front();
+        lidar_time_buffer.pop_front();
         mtx_buffer.unlock();
         sig_buffer.notify_all();
+
+        // 当前LiDAR帧已经处理完成, 进入下一LiDAR帧的处理流程
         lidar_pushed = false;
+        // 当前LiDAR帧结束时间戳之前没有Camera数据, 当前LiDAR帧结束时间戳之前的Camera数据已经全部处理完成
         meas.is_lidar_end = true;
         meas.measures.push_back(m);
     }
+    // 如果最旧的Camera帧时间戳在当前LiDAR帧结束时间戳之前, 则执行该分支, 进行Camera数据与IMU数据之间的时间同步
     else
     {
-        double img_start_time = img_time_buffer.front(); // process img topic, record timestamp
+        // 获取最旧的Camera帧时间戳
+        double img_start_time = img_time_buffer.front();
+
+        // 最新的IMU帧时间戳要在最旧的Camera帧时间戳之后, 要保证前向传播的完全性
         if (last_timestamp_imu < img_start_time)
         {
-            // ROS_ERROR("out sync");
             return false;
         }
+
+        // 获取最旧的IMU帧时间戳
         double imu_time = imu_buffer.front()->header.stamp.toSec();
         m.imu.clear();
-        m.img_offset_time = img_start_time - meas.lidar_beg_time; // record img offset time, it shoule be the Kalman update timestamp.
+
+        // record img offset time, it shoule be the Kalman update timestamp.
+        m.img_offset_time = img_start_time - meas.lidar_beg_time;
+
+        // 获取最旧的Camera帧作为当前Camera帧, 并存储在MeasureGroup中
         m.img = img_buffer.front();
+
         mtx_buffer.lock();
+        // 获取所有当前Camera帧时间戳之前的IMU数据, 存储在MeasureGroup中, 并从imu_buffer中删除
         while ((!imu_buffer.empty() && (imu_time < img_start_time)))
         {
             imu_time = imu_buffer.front()->header.stamp.toSec();
@@ -574,65 +629,18 @@ bool sync_packages(LidarMeasureGroup &meas)
             m.imu.push_back(imu_buffer.front());
             imu_buffer.pop_front();
         }
+        // 当前Camera帧已经处理完成, 并从img_buffer中删除
         img_buffer.pop_front();
         img_time_buffer.pop_front();
         mtx_buffer.unlock();
         sig_buffer.notify_all();
-        meas.is_lidar_end = false; // has img topic in lidar scan, so flag "is_lidar_end=false"
+
+        // 当前LiDAR帧结束时间戳之前存在Camera数据, 当前LiDAR帧结束时间戳之前的Camera数据正在处理
+        meas.is_lidar_end = false;
         meas.measures.push_back(m);
     }
-    // ROS_ERROR("out sync");
+
     return true;
-    // if (lidar_buffer.empty() || imu_buffer.empty()) {
-    //     return false;
-    // }
-
-    // /*** push a lidar scan ***/
-    // if(!lidar_pushed)
-    // {
-    //     meas.lidar = lidar_buffer.front();
-    //     if(meas.lidar->points.size() <= 1)
-    //     {
-    //         lidar_buffer.pop_front();
-    //         return false;
-    //     }
-    //     meas.lidar_beg_time = time_buffer.front();
-    //     lidar_end_time = meas.lidar_beg_time + meas.lidar->points.back().curvature / double(1000);
-    //     lidar_pushed = true;
-    // }
-
-    // if (last_timestamp_imu < lidar_end_time)
-    // {
-    //     return false;
-    // }
-
-    // /*** push imu data, and pop from imu buffer ***/
-    // double imu_time = imu_buffer.front()->header.stamp.toSec();
-    // meas.imu.clear();
-    // while ((!imu_buffer.empty()) && (imu_time < lidar_end_time))
-    // {
-    //     imu_time = imu_buffer.front()->header.stamp.toSec();
-    //     if(imu_time > lidar_end_time + 0.02) break;
-    //     meas.imu.push_back(imu_buffer.front());
-    //     imu_buffer.pop_front();
-    // }
-    // meas.img.clear();
-    // cout<<"lidar_end_time"<<setprecision(15)<<lidar_end_time<<endl;
-    // cout<<"meas.lidar_beg_time:"<<meas.lidar_beg_time<<endl;
-    // double img_time = img_buffer.front()->header.stamp.toSec();
-    // while ((!img_buffer.empty()) && (img_time < lidar_end_time))
-    // {
-    //     img_time = img_buffer.front()->header.stamp.toSec();
-    //     cout<<"img_buffer.size():"<<img_buffer.size()<<endl;
-    //     cout<<"img_time:"<<setprecision(15)<<img_time<<endl;
-    //     if(img_time > lidar_end_time + 0.02) break;
-    //     meas.img.push_back(img_buffer.front());
-    //     img_buffer.pop_front();
-    // }
-    // cout<<"meas.img.size():"<<meas.img.size()<<endl;
-    // lidar_buffer.pop_front();
-    // time_buffer.pop_front();
-    // lidar_pushed = false;
 }
 
 void map_incremental()
