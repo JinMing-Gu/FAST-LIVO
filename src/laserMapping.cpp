@@ -897,18 +897,18 @@ void readParameters(ros::NodeHandle &nh)
     nh.param<int>("debug", debug, 0);
     nh.param<int>("max_iteration", NUM_MAX_ITERATIONS, 4);
     nh.param<bool>("ncc_en", ncc_en, false);
-    nh.param<int>("min_img_count", MIN_IMG_COUNT, 1000);
+    nh.param<int>("min_img_count", MIN_IMG_COUNT, 1000); // 无该参数
     nh.param<double>("cam_fx", cam_fx, 453.483063);
     nh.param<double>("cam_fy", cam_fy, 453.254913);
     nh.param<double>("cam_cx", cam_cx, 318.908851);
     nh.param<double>("cam_cy", cam_cy, 234.238189);
     nh.param<double>("laser_point_cov", LASER_POINT_COV, 0.001);
     nh.param<double>("img_point_cov", IMG_POINT_COV, 10);
-    nh.param<string>("map_file_path", map_file_path, "");
+    nh.param<string>("map_file_path", map_file_path, ""); // 无该参数
     nh.param<string>("common/lid_topic", lid_topic, "/livox/lidar");
     nh.param<string>("common/imu_topic", imu_topic, "/livox/imu");
     nh.param<string>("camera/img_topic", img_topic, "/usb_cam/image_raw");
-    nh.param<double>("filter_size_corner", filter_size_corner_min, 0.5);
+    nh.param<double>("filter_size_corner", filter_size_corner_min, 0.5); // 无该参数
     nh.param<double>("filter_size_surf", filter_size_surf_min, 0.5);
     nh.param<double>("filter_size_map", filter_size_map_min, 0.5);
     nh.param<double>("cube_side_length", cube_len, 200);
@@ -960,16 +960,20 @@ int main(int argc, char **argv)
     path.header.frame_id = "camera_init";
 
 /*** variables definition ***/
-    Eigen::Matrix<double, DIM_STATE, 1>
-    solution;
-    Eigen::Matrix<double, DIM_STATE, DIM_STATE>
-    G, H_T_H, I_STATE;
-    Eigen::Vector3d rot_add, t_add;
+    Eigen::Matrix<double, DIM_STATE, 1> solution;
+    Eigen::Matrix<double, DIM_STATE, DIM_STATE> G;
+    Eigen::Matrix<double, DIM_STATE, DIM_STATE> H_T_H;
+    Eigen::Matrix<double, DIM_STATE, DIM_STATE> I_STATE;
+    Eigen::Vector3d rot_add;
+    Eigen::Vector3d t_add;
     StatesGroup state_propagat;
-    PointType pointOri, pointSel, coeff;
+    PointType pointOri;
+    PointType pointSel;
+    PointType coeff;
 
     // PointCloudXYZI::Ptr corr_normvect(new PointCloudXYZI(100000, 1));
-    int effect_feat_num = 0, frame_num = 0;
+    int effect_feat_num = 0;
+    int frame_num = 0;
     double deltaT, deltaR, aver_time_consu = 0, aver_time_icp = 0, aver_time_match = 0, aver_time_solve = 0, aver_time_const_H_time = 0;
 
     FOV_DEG = (fov_deg + 10.0) > 179.9 ? 179.9 : (fov_deg + 10.0);
