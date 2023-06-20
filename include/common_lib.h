@@ -50,11 +50,6 @@ typedef vector<PointType, Eigen::aligned_allocator<PointType>> PointVector;
 typedef pcl::PointCloud<PointTypeRGB> PointCloudXYZRGB;
 typedef std::vector<float> FloatArray;
 
-#define MD(a, b) Eigen::Matrix<double, (a), (b)>
-#define VD(a) Eigen::Matrix<double, (a), 1>
-#define MF(a, b) Eigen::Matrix<float, (a), (b)>
-#define VF(a) Eigen::Matrix<float, (a), 1>
-
 #define HASH_P 116101
 #define MAX_N 10000000000
 

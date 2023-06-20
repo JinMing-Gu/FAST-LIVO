@@ -56,6 +56,10 @@ void Preprocess::process(const sensor_msgs::PointCloud2::ConstPtr &msg, PointClo
     case VELO16:
         velodyne_handler(msg);
         break;
+    
+    case ROTATING_LIDAR:
+        rotating_lidar_handler(msg);
+        break;
 
     default:
         printf("Error LiDAR Type");
@@ -421,6 +425,52 @@ void Preprocess::velodyne_handler(const sensor_msgs::PointCloud2::ConstPtr &msg)
     // pub_func(pl_surf, pub_full, msg->header.stamp);
     // pub_func(pl_surf, pub_surf, msg->header.stamp);
     // pub_func(pl_surf, pub_corn, msg->header.stamp);
+}
+
+void Preprocess::rotating_lidar_handler(const sensor_msgs::PointCloud2::ConstPtr &msg)
+{
+    pl_surf.clear();
+    pl_corn.clear();
+    pl_full.clear();
+
+    pcl::PointCloud<pcl::PointXYZI> pl_orig;
+    pcl::fromROSMsg(*msg, pl_orig);
+    uint plsize = pl_orig.size();
+    if (plsize == 0)
+        return;
+    pl_surf.reserve(plsize);
+
+    double time_stamp = msg->header.stamp.toSec();
+    for (int i = 0; i < pl_orig.points.size(); i++)
+    {
+        double range = std::sqrt(pl_orig.points[i].x * pl_orig.points[i].x + pl_orig.points[i].y * pl_orig.points[i].y +
+                                 pl_orig.points[i].z * pl_orig.points[i].z);
+        if (range < blind)
+        {
+            continue;
+        }
+
+        PointType added_pt;
+        added_pt.x = pl_orig.points[i].x;
+        added_pt.y = pl_orig.points[i].y;
+        added_pt.z = pl_orig.points[i].z;
+        added_pt.intensity = pl_orig.points[i].intensity;
+        added_pt.normal_x = 0;
+        added_pt.normal_y = 0;
+        added_pt.normal_z = 0;
+        // double(i) / double(plsize - 1), 在100毫秒内占的比例
+        // added_pt.curvature, 单位: 毫秒
+        added_pt.curvature = (double(i) / double(plsize - 1)) * 100;
+        // added_pt.curvature = 0;
+
+        if (i % point_filter_num == 0)
+        {
+            if (added_pt.x * added_pt.x + added_pt.y * added_pt.y + added_pt.z * added_pt.z > (blind * blind))
+            {
+                pl_surf.points.push_back(added_pt);
+            }
+        }
+    }
 }
 
 void Preprocess::give_feature(pcl::PointCloud<PointType> &pl, vector<orgtype> &types)

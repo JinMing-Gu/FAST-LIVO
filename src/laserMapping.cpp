@@ -80,7 +80,7 @@ condition_variable sig_buffer;
 // mutex mtx_buffer_pointcloud;
 
 string root_dir = ROOT_DIR;
-string map_file_path, lid_topic, imu_topic, img_topic, config_file;
+string map_file_path, lid_topic, imu_topic, wheel_odom_topic, img_topic, config_file;
 ;
 Eigen::Matrix3d Eye3d(Eigen::Matrix3d::Identity());
 Eigen::Matrix3f Eye3f(Eigen::Matrix3f::Identity());
@@ -96,7 +96,7 @@ double res_mean_last = 0.05;
 // double gyr_cov_scale, acc_cov_scale;
 double gyr_cov_scale = 0, acc_cov_scale = 0;
 // double last_timestamp_lidar, last_timestamp_imu = -1.0;
-double last_timestamp_lidar = 0, last_timestamp_imu = -1.0, last_timestamp_img = -1.0;
+double last_timestamp_lidar = 0, last_timestamp_imu = -1.0, last_timestamp_wheel_odom = -1.0, last_timestamp_img = -1.0;
 // double filter_size_corner_min, filter_size_surf_min, filter_size_map_min, fov_deg;
 double filter_size_corner_min = 0, filter_size_surf_min = 0, filter_size_map_min = 0, fov_deg = 0;
 // double cube_len, HALF_FOV_COS, FOV_DEG, total_distance, lidar_end_time, first_lidar_time = 0.0;
@@ -126,8 +126,9 @@ vector<BoxPointType> cub_needrm;
 vector<BoxPointType> cub_needad;
 // deque<sensor_msgs::PointCloud2::ConstPtr> lidar_buffer;
 deque<PointCloudXYZI::Ptr> lidar_buffer;
-deque<double> time_buffer;
+deque<double> lidar_time_buffer;
 deque<sensor_msgs::Imu::ConstPtr> imu_buffer;
+deque<nav_msgs::Odometry::ConstPtr> wheel_odom_buffer;
 deque<cv::Mat> img_buffer;
 deque<double> img_time_buffer;
 vector<bool> point_selected_surf;
@@ -357,9 +358,9 @@ void standard_pcl_cbk(const sensor_msgs::PointCloud2::ConstPtr &msg)
     // ROS_INFO("get point cloud at time: %.6f and size: %d", msg->header.stamp.toSec() - 0.1, ptr->points.size());
     printf("[ INFO ]: get point cloud at time: %.6f and size: %d.\n", msg->header.stamp.toSec(), int(ptr->points.size()));
     lidar_buffer.push_back(ptr);
-    // time_buffer.push_back(msg->header.stamp.toSec() - 0.1);
+    // lidar_time_buffer.push_back(msg->header.stamp.toSec() - 0.1);
     // last_timestamp_lidar = msg->header.stamp.toSec() - 0.1;
-    time_buffer.push_back(msg->header.stamp.toSec());
+    lidar_time_buffer.push_back(msg->header.stamp.toSec());
     last_timestamp_lidar = msg->header.stamp.toSec();
     mtx_buffer.unlock();
     sig_buffer.notify_all();
@@ -377,7 +378,7 @@ void livox_pcl_cbk(const livox_ros_driver::CustomMsg::ConstPtr &msg)
     PointCloudXYZI::Ptr ptr(new PointCloudXYZI());
     p_pre->process(msg, ptr);
     lidar_buffer.push_back(ptr);
-    time_buffer.push_back(msg->header.stamp.toSec());
+    lidar_time_buffer.push_back(msg->header.stamp.toSec());
     last_timestamp_lidar = msg->header.stamp.toSec();
 
     mtx_buffer.unlock();
@@ -408,6 +409,28 @@ void imu_cbk(const sensor_msgs::Imu::ConstPtr &msg_in)
     sig_buffer.notify_all();
 }
 
+void wheel_odom_cbk(const nav_msgs::Odometry::ConstPtr &msg_in)
+{
+    nav_msgs::Odometry::Ptr msg(new nav_msgs::Odometry(*msg_in));
+
+    double timestamp = msg->header.stamp.toSec();
+    mtx_buffer.lock();
+
+    if (timestamp < last_timestamp_wheel_odom)
+    {
+        ROS_ERROR("wheel odom loop back, clear buffer");
+        wheel_odom_buffer.clear();
+        flg_reset = true;
+    }
+
+    last_timestamp_wheel_odom = timestamp;
+
+    wheel_odom_buffer.push_back(msg);
+
+    mtx_buffer.unlock();
+    sig_buffer.notify_all();
+}
+
 cv::Mat getImageFromMsg(const sensor_msgs::ImageConstPtr &img_msg)
 {
     cv::Mat img;
@@ -418,8 +441,8 @@ cv::Mat getImageFromMsg(const sensor_msgs::ImageConstPtr &img_msg)
 void img_cbk(const sensor_msgs::ImageConstPtr &msg)
 {
     // cout<<"In Img_cbk"<<endl;
-    // if (first_img_time<0 && time_buffer.size()>0) {
-    //     first_img_time = msg->header.stamp.toSec() - time_buffer.front();
+    // if (first_img_time<0 && lidar_time_buffer.size()>0) {
+    //     first_img_time = msg->header.stamp.toSec() - lidar_time_buffer.front();
     // }
     if (!img_en)
     {
@@ -460,9 +483,10 @@ bool sync_packages(LidarMeasureGroup &meas)
 
     if (!lidar_pushed)
     { // If not in lidar scan, need to generate new meas
+        cout << "!!!!!!!!!!!!!!!111111111111111!!!!!!!!!!!!!!!!!!" << endl;
         if (lidar_buffer.empty())
         {
-            // ROS_ERROR("out sync");
+            ROS_ERROR("out sync");
             return false;
         }
         meas.lidar = lidar_buffer.front(); // push the firsrt lidar topic
@@ -472,24 +496,27 @@ bool sync_packages(LidarMeasureGroup &meas)
             if (img_buffer.size() > 0) // temp method, ignore img topic when no lidar points, keep sync
             {
                 lidar_buffer.pop_front();
+                lidar_time_buffer.pop_front();
                 img_buffer.pop_front();
+                img_time_buffer.pop_front();
             }
             mtx_buffer.unlock();
             sig_buffer.notify_all();
-            // ROS_ERROR("out sync");
+            ROS_ERROR("out sync");
             return false;
         }
         sort(meas.lidar->points.begin(), meas.lidar->points.end(), time_list);                     // sort by sample timestamp
-        meas.lidar_beg_time = time_buffer.front();                                                 // generate lidar_beg_time
+        meas.lidar_beg_time = lidar_time_buffer.front();                                                 // generate lidar_beg_time
         lidar_end_time = meas.lidar_beg_time + meas.lidar->points.back().curvature / double(1000); // calc lidar scan end time
         lidar_pushed = true;                                                                       // flag
     }
 
     if (img_buffer.empty())
     { // no img topic, means only has lidar topic
+        cout << "!!!!!!!!!!!!!!!222222222222222222!!!!!!!!!!!!!!!!!!" << endl;
         if (last_timestamp_imu < lidar_end_time + 0.02)
         { // imu message needs to be larger than lidar_end_time, keep complete propagate.
-            // ROS_ERROR("out sync");
+            ROS_ERROR("out sync");
             return false;
         }
         struct MeasureGroup m; // standard method to keep imu message.
@@ -505,7 +532,7 @@ bool sync_packages(LidarMeasureGroup &meas)
             imu_buffer.pop_front();
         }
         lidar_buffer.pop_front();
-        time_buffer.pop_front();
+        lidar_time_buffer.pop_front();
         mtx_buffer.unlock();
         sig_buffer.notify_all();
         lidar_pushed = false;     // sync one whole lidar scan.
@@ -516,13 +543,14 @@ bool sync_packages(LidarMeasureGroup &meas)
     }
     struct MeasureGroup m;
     // cout<<"lidar_buffer.size(): "<<lidar_buffer.size()<<" img_buffer.size(): "<<img_buffer.size()<<endl;
-    // cout<<"time_buffer.size(): "<<time_buffer.size()<<" img_time_buffer.size(): "<<img_time_buffer.size()<<endl;
+    // cout<<"lidar_time_buffer.size(): "<<lidar_time_buffer.size()<<" img_time_buffer.size(): "<<img_time_buffer.size()<<endl;
     // cout<<"img_time_buffer.front(): "<<img_time_buffer.front()<<"lidar_end_time: "<<lidar_end_time<<"last_timestamp_imu: "<<last_timestamp_imu<<endl;
     if ((img_time_buffer.front() > lidar_end_time))
     { // has img topic, but img topic timestamp larger than lidar end time, process lidar topic.
+        cout << "!!!!!!!!!!!!!!!3333333333333333333333!!!!!!!!!!!!!!!!!!" << endl;
         if (last_timestamp_imu < lidar_end_time + 0.02)
         {
-            // ROS_ERROR("out sync");
+            ROS_ERROR("out sync");
             return false;
         }
         double imu_time = imu_buffer.front()->header.stamp.toSec();
@@ -537,7 +565,7 @@ bool sync_packages(LidarMeasureGroup &meas)
             imu_buffer.pop_front();
         }
         lidar_buffer.pop_front();
-        time_buffer.pop_front();
+        lidar_time_buffer.pop_front();
         mtx_buffer.unlock();
         sig_buffer.notify_all();
         lidar_pushed = false;
@@ -546,10 +574,11 @@ bool sync_packages(LidarMeasureGroup &meas)
     }
     else
     {
+        cout << "!!!!!!!!!!!!!!!44444444444444444444444!!!!!!!!!!!!!!!!!!" << endl;
         double img_start_time = img_time_buffer.front(); // process img topic, record timestamp
         if (last_timestamp_imu < img_start_time)
         {
-            // ROS_ERROR("out sync");
+            ROS_ERROR("out sync");
             return false;
         }
         double imu_time = imu_buffer.front()->header.stamp.toSec();
@@ -587,7 +616,7 @@ bool sync_packages(LidarMeasureGroup &meas)
     //         lidar_buffer.pop_front();
     //         return false;
     //     }
-    //     meas.lidar_beg_time = time_buffer.front();
+    //     meas.lidar_beg_time = lidar_time_buffer.front();
     //     lidar_end_time = meas.lidar_beg_time + meas.lidar->points.back().curvature / double(1000);
     //     lidar_pushed = true;
     // }
@@ -622,7 +651,7 @@ bool sync_packages(LidarMeasureGroup &meas)
     // }
     // cout<<"meas.img.size():"<<meas.img.size()<<endl;
     // lidar_buffer.pop_front();
-    // time_buffer.pop_front();
+    // lidar_time_buffer.pop_front();
     // lidar_pushed = false;
 }
 
@@ -894,6 +923,7 @@ void readParameters(ros::NodeHandle &nh)
     nh.param<string>("map_file_path", map_file_path, "");
     nh.param<string>("common/lid_topic", lid_topic, "/livox/lidar");
     nh.param<string>("common/imu_topic", imu_topic, "/livox/imu");
+    nh.param<string>("common/wheel_odom_topic", wheel_odom_topic, "/odom");
     nh.param<string>("camera/img_topic", img_topic, "/usb_cam/image_raw");
     nh.param<double>("filter_size_corner", filter_size_corner_min, 0.5);
     nh.param<double>("filter_size_surf", filter_size_surf_min, 0.5);
@@ -928,6 +958,7 @@ int main(int argc, char **argv)
     // pcl_visual_wait_pub->clear();
     ros::Subscriber sub_pcl = p_pre->lidar_type == AVIA ? nh.subscribe(lid_topic, 200000, livox_pcl_cbk) : nh.subscribe(lid_topic, 200000, standard_pcl_cbk);
     ros::Subscriber sub_imu = nh.subscribe(imu_topic, 200000, imu_cbk);
+    ros::Subscriber sub_wheel_odom = nh.subscribe(wheel_odom_topic, 200000, wheel_odom_cbk);
     ros::Subscriber sub_img = nh.subscribe(img_topic, 200000, img_cbk);
     image_transport::Publisher img_pub = it.advertise("/rgb_img", 1);
     ros::Publisher pubLaserCloudFullRes = nh.advertise<sensor_msgs::PointCloud2>("/cloud_registered", 100);
@@ -947,9 +978,9 @@ int main(int argc, char **argv)
     path.header.frame_id = "camera_init";
 
 /*** variables definition ***/
-    VD(DIM_STATE)
+    Eigen::Matrix<double, DIM_STATE, 1>
     solution;
-    MD(DIM_STATE, DIM_STATE)
+    Eigen::Matrix<double, DIM_STATE, DIM_STATE>
     G, H_T_H, I_STATE;
     Eigen::Vector3d rot_add, t_add;
     StatesGroup state_propagat;
@@ -1269,7 +1300,7 @@ int main(int argc, char **argv)
                     if (!point_selected_surf[i] || points_near.size() < NUM_MATCH_POINTS)
                         continue;
 
-                    VF(4)
+                    Eigen::Matrix<float, 4, 1>
                     pabcd;
                     point_selected_surf[i] = false;
                     if (esti_plane(pabcd, points_near, 0.1f)) //(planeValid)
@@ -1343,8 +1374,8 @@ int main(int argc, char **argv)
                 {
                     cout << "||||||||||Initiallizing LiDar||||||||||" << endl;
                     /*** only run in initialization period ***/
-                    Eigen::MatrixXd H_init(MD(9, DIM_STATE)::Zero());
-                    Eigen::MatrixXd z_init(VD(9)::Zero());
+                    Eigen::MatrixXd H_init(Eigen::Matrix<double, 9, DIM_STATE>::Zero());
+                    Eigen::MatrixXd z_init(Eigen::Matrix<double, 9, 1>::Zero());
                     H_init.block<3, 3>(0, 0) = Eigen::Matrix3d::Identity();
                     H_init.block<3, 3>(3, 3) = Eigen::Matrix3d::Identity();
                     H_init.block<3, 3>(6, 15) = Eigen::Matrix3d::Identity();
@@ -1352,7 +1383,7 @@ int main(int argc, char **argv)
                     z_init.block<3, 1>(0, 0) = -state.pos_end;
 
                     auto H_init_T = H_init.transpose();
-                    auto &&K_init = state.cov * H_init_T * (H_init * state.cov * H_init_T + 0.0001 * MD(9, 9)::Identity()).inverse();
+                    auto &&K_init = state.cov * H_init_T * (H_init * state.cov * H_init_T + 0.0001 * Eigen::Matrix<double, 9, 9>::Identity()).inverse();
                     solution = K_init * z_init;
 
                     // solution.block<9,1>(0,0).setZero();
@@ -1368,7 +1399,7 @@ int main(int argc, char **argv)
                     auto &&HTz = Hsub_T * meas_vec;
                     H_T_H.block<6, 6>(0, 0) = Hsub_T * Hsub;
                     // EigenSolver<Eigen::Matrix<double, 6, 6>> es(H_T_H.block<6,6>(0,0));
-                    MD(DIM_STATE, DIM_STATE) &&K_1 =
+                    Eigen::Matrix<double, DIM_STATE, DIM_STATE> &&K_1 =
                         (H_T_H + (state.cov / LASER_POINT_COV).inverse()).inverse();
                     G.block<DIM_STATE, 6>(0, 0) = K_1.block<DIM_STATE, 6>(0, 0) * H_T_H.block<6, 6>(0, 0);
                     auto vec = state_propagat - state;
@@ -1377,7 +1408,7 @@ int main(int argc, char **argv)
                     int minRow, minCol;
                     if (0) // if(V.minCoeff(&minRow, &minCol) < 1.0f)
                     {
-                        VD(6)
+                        Eigen::Matrix<double, 6, 1>
                         V = H_T_H.block<6, 6>(0, 0).eigenvalues().real();
                         cout << "!!!!!! Degeneration Happend, eigen values: " << V.transpose() << endl;
                         EKF_stop_flg = true;
@@ -1420,9 +1451,9 @@ int main(int argc, char **argv)
                         position_last = state.pos_end;
                         geoQuat = tf::createQuaternionMsgFromRollPitchYaw(euler_cur(0), euler_cur(1), euler_cur(2));
 
-                        VD(DIM_STATE)
+                        Eigen::Matrix<double, DIM_STATE, 1>
                         K_sum = K.rowwise().sum();
-                        VD(DIM_STATE)
+                        Eigen::Matrix<double, DIM_STATE, 1>
                         P_diag = state.cov.diagonal();
                         // cout<<"K: "<<K_sum.transpose()<<endl;
                         // cout<<"P: "<<P_diag.transpose()<<endl;

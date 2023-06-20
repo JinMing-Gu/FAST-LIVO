@@ -53,7 +53,7 @@ void ImuProcess::push_update_state(double offs_t, StatesGroup state)
     IMUpose.push_back(set_pose6d(offs_t, acc_tmp, angvel_tmp, vel_imu, pos_imu, R_imu));
 }
 
-void ImuProcess::set_extrinsic(const MD(4, 4) & T)
+void ImuProcess::set_extrinsic(const Eigen::Matrix<double, 4, 4> & T)
 {
     Lid_offset_to_IMU = T.block<3, 1>(0, 3);
     Lid_rot_to_IMU = T.block<3, 3>(0, 0);
@@ -158,7 +158,7 @@ void ImuProcess::Forward(const MeasureGroup &meas, StatesGroup &state_inout, dou
     Eigen::Vector3d acc_imu = acc_s_last, angvel_avr = angvel_last, acc_avr, vel_imu(state_inout.vel_end), pos_imu(state_inout.pos_end);
     Eigen::Matrix3d R_imu(state_inout.rot_end);
     //  last_state = state_inout;
-    MD(DIM_STATE, DIM_STATE)
+    Eigen::Matrix<double, DIM_STATE, DIM_STATE>
     F_x, cov_w;
 
     double dt = 0;
@@ -431,7 +431,7 @@ void ImuProcess::UndistortPcl(LidarMeasureGroup &lidar_meas, StatesGroup &state_
     /*** forward propagation at each imu point ***/
     Eigen::Vector3d acc_imu(acc_s_last), angvel_avr(angvel_last), acc_avr, vel_imu(state_inout.vel_end), pos_imu(state_inout.pos_end);
     Eigen::Matrix3d R_imu(state_inout.rot_end);
-    MD(DIM_STATE, DIM_STATE)
+    Eigen::Matrix<double, DIM_STATE, DIM_STATE>
     F_x, cov_w;
 
     double dt = 0;

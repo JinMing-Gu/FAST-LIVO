@@ -96,7 +96,7 @@ namespace lidar_selection
         add_voxel_points_.reserve(length);
     }
 
-    void LidarSelector::dpi(Eigen::Vector3d p, MD(2, 3) & J)
+    void LidarSelector::dpi(Eigen::Vector3d p, Eigen::Matrix<double, 2, 3> & J)
     {
         const double x = p[0];
         const double y = p[1];
@@ -773,11 +773,11 @@ namespace lidar_selection
             return 0.;
         StatesGroup old_state = (*state);
         Eigen::Vector2d pc;
-        MD(1, 2)
+        Eigen::Matrix<double, 1, 2>
         Jimg;
-        MD(2, 3)
+        Eigen::Matrix<double, 2, 3>
         Jdpi;
-        MD(1, 3)
+        Eigen::Matrix<double, 1, 3>
         Jdphi, Jdp, JdR, Jdt;
         Eigen::VectorXd z;
         // Eigen::VectorXd R;
@@ -899,7 +899,7 @@ namespace lidar_selection
 
                 auto &&H_sub_T = H_sub.transpose();
                 H_T_H.block<6, 6>(0, 0) = H_sub_T * H_sub;
-                MD(DIM_STATE, DIM_STATE) &&K_1 = (H_T_H + (state->cov / img_point_cov).inverse()).inverse();
+                Eigen::Matrix<double, DIM_STATE, DIM_STATE> &&K_1 = (H_T_H + (state->cov / img_point_cov).inverse()).inverse();
                 auto &&HTz = H_sub_T * z;
                 // K = K_1.block<DIM_STATE,6>(0,0) * H_sub_T;
                 auto vec = (*state_propagat) - (*state);

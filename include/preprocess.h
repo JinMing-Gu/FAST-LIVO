@@ -14,7 +14,8 @@ enum LID_TYPE
 {
     AVIA = 1,
     VELO16,
-    OUST64
+    OUST64,
+    ROTATING_LIDAR
 }; //{1, 2, 3}
 enum Feature
 {
@@ -127,6 +128,7 @@ class Preprocess
   void avia_handler(const livox_ros_driver::CustomMsg::ConstPtr &msg);
   void oust64_handler(const sensor_msgs::PointCloud2::ConstPtr &msg);
   void velodyne_handler(const sensor_msgs::PointCloud2::ConstPtr &msg);
+  void rotating_lidar_handler(const sensor_msgs::PointCloud2::ConstPtr &msg);
   void give_feature(PointCloudXYZI &pl, vector<orgtype> &types);
   void pub_func(PointCloudXYZI &pl, const ros::Time &ct);
   int  plane_judge(const PointCloudXYZI &pl, vector<orgtype> &types, uint i, uint &i_nex, Eigen::Vector3d &curr_direct);

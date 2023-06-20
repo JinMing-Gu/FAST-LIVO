@@ -47,7 +47,7 @@ public:
     void push_update_state(double offs_t, StatesGroup state);
     void set_extrinsic(const Eigen::Vector3d &transl, const Eigen::Matrix3d &rot);
     void set_extrinsic(const Eigen::Vector3d &transl);
-    void set_extrinsic(const MD(4, 4) & T);
+    void set_extrinsic(const Eigen::Matrix<double, 4, 4> & T);
     void set_gyr_cov_scale(const Eigen::Vector3d &scaler);
     void set_acc_cov_scale(const Eigen::Vector3d &scaler);
     void set_gyr_bias_cov(const Eigen::Vector3d &b_g);
