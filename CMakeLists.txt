@@ -66,9 +66,12 @@ set(Sophus /home/uisee/Environment/Sophus_a621ff/installation)
 find_package(Eigen3 REQUIRED)
 find_package(PCL REQUIRED)
 FIND_PACKAGE(OpenCV REQUIRED)
-FIND_PACKAGE(Sophus REQUIRED)
+# FIND_PACKAGE(Sophus REQUIRED)
 FIND_PACKAGE(Boost REQUIRED COMPONENTS thread)
-set(Sophus_LIBRARIES libSophus.so)
+# set(Sophus_LIBRARIES libSophus.so)
+
+set(Sophus_INCLUDE_DIRS "/home/uisee/Environment/Sophus_a621ff/installation/include")
+set(Sophus_LIBRARIES "/home/uisee/Environment/Sophus_a621ff/installation/lib/libSophus.so")
 
 message(Eigen: ${EIGEN3_INCLUDE_DIR})
 
